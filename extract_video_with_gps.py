@@ -11,18 +11,16 @@ def extract_images(folder_path, file_path, fps):
     print("exporting to images with ffmpeg ...")
     if fps is not None:
         fps_arg = ["-vf", "fps={}".format(fps)]
-        output = folder_path/"{}_fps{}".format(file_path.namebase, fps)
     else:
         fps_arg = []
 
-    ffmpeg = Popen(["ffmpeg", "-y", "-i", str(file_path), "-qscale:v", "2"] + fps_arg + [str(output/"{}%05d.jpg")],
+    ffmpeg = Popen(["ffmpeg", "-y", "-i", str(file_path), "-qscale:v", "2"] + fps_arg + [str(folder_path/"%05d.jpg")],
                    stdout=PIPE, stderr=PIPE)
     ffmpeg.wait()
 
 
 def extract_metadata(folder_path, file_path, native_wrapper):
-    name = file_path.namebase
-    output_file = folder_path/name/"metadata.csv"
+    output_file = folder_path/"metadata.csv"
     print("extracting metadata with vmeta_extract...")
     vmeta_extract = Popen([native_wrapper, "vmeta-extract", str(file_path), "--csv", str(output_file)],
                           stdout=PIPE, stderr=PIPE)
@@ -43,31 +41,42 @@ def add_gps_to_exif(folder, fps):
     print("Modifying gps EXIF for colmap...")
     for pic_path, row in tqdm(zip(pictures, metadata.iterrows()), total=len(pictures)):
         if row[1]["location_valid"] == 1:
-            edit_exif.set_gps_location(pic_path, row[1]["location_latitude"], row[1]["location_longitude"], row[1]["location_altitude"])
+            edit_exif.set_gps_location(pic_path,
+                                       row[1]["location_latitude"],
+                                       row[1]["location_longitude"],
+                                       row[1]["location_altitude"])
 
 
-def workflow(folder, video_path, args):
-    (folder/video_path.namebase).mkdir_p()
+def workflow(output_folder, video_path, args):
+    output_folder /= video_path.namebase
+    if args.fps is not None:
+        output_folder += "_{}fps".format(args.fps)
+    output_folder.mkdir_p()
     print(video_path.namebase)
     print(video_path)
-    extract_images(folder, video_path, args.fps)
-    extract_metadata(folder, video_path, args.nw)
-    add_gps_to_exif(folder/video_path.namebase, args.fps)
+    extract_images(output_folder, video_path, args.fps)
+    extract_metadata(output_folder, video_path, args.nw)
+    add_gps_to_exif(output_folder, args.fps)
 
 
 parser = ArgumentParser(description='image extractor from parrot video',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--root', metavar='DIR', default="~/Images/scan manoir/anafi/video",
-                    help='path to video folder root')
+                    help='path to video folder root', type=Path)
 parser.add_argument('--fps', metavar='F', default=None, type=int,
                     help='fps')
+parser.add_argument('--output_folder', metavar='PATH', default=None, type=Path)
 parser.add_argument('--nw', default='',
                     help="native-wrapper.sh file location")
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    root = Path(args.root)
+    root = args.root
+    if args.output_folder is None:
+        output_folder = root
+    else:
+        output_folder = args.output_folder
     file_exts = ['.mp4', '.MP4']
     if root.isdir():
         folders = list(root.walkdirs())
@@ -77,6 +86,6 @@ if __name__ == '__main__':
             if videos:
                 print("Generating images with gps for videos in {}".format(str(folder)))
                 for video_path in videos:
-                    workflow(folder, video_path, args)
+                    workflow(output_folder/(folder.relpath(root)), video_path, args)
     elif root.isfile() and root.ext in file_exts:
-        workflow(root.parent, root, args)
+        workflow(root.parent, output_folder, args)

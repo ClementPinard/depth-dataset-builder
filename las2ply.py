@@ -9,8 +9,8 @@ parser = ArgumentParser(description='Convert las cloud to ply along with centroi
 
 parser.add_argument('las',
                     help='path to video folder root')
-parser.add_argument('--output_ply', metavar='PATH')
-parser.add_argument('--output_txt', metavar='PATH')
+parser.add_argument('--output_ply', metavar='PATH', default=None)
+parser.add_argument('--output_txt', metavar='PATH', default=None)
 
 
 def main():

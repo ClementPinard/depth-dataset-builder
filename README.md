@@ -40,4 +40,80 @@ To be extended but roughly, here are the key steps of the dataset creation :
 
 6. For each video : register all the video frames in the reconstructed model
     - It is not recommended to do it with all the videos at the same time, or the last bundle_adjustement will be very slow.
-    - See [here]() for more details on frames registration 
+    - See [here]() for more details on frames registration
+
+
+## Detailed method with the "Manoir" example
+
+### Scene presentation
+
+### Data acquisition
+
+
+### Set-by-step commands
+
+1. Extract frames from the videos. For the moment, extract only frames that will help the general reconstruction.
+
+2. Put images in the following tree strcture:
+```
+├── images
+│   ├── anafi
+│   │   ├── raw
+│   │   ├── rectilinear
+│   │   └── video
+│   │       ├── 4K30
+│   │       └── 720p120
+│   └── apn
+└── images_mask
+```
+
+3. Generate masks in the folder `images_mask`
+
+`python generate_sky_map.py --root images`
+
+5. First COLMAP step : feature extraction
+
+```
+colmap feature_extractor --database scan.db --image
+```
+
+6. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
+
+```
+colmap exhaustive_matcher --database scan.db
+```
+or
+```
+colmap spatial_matcher --database scan.db
+```
+or
+```
+colmap vocab_tree_matcher --database scan.db
+```
+
+7. Third COLMAP step : mapping.
+
+```
+mkdir -p output/sparse
+colmap mapper --Mapper.multiple_models 0 --database_path scan.db --output_path output/sparse/ --image_path images
+```
+
+This will create a model file in the folder `output/sparse` (or `output/sparse/0`), in the form of 3 files
+```
+└── sparse
+    └── 0
+        ├── cameras.bin
+        ├── images.bin
+        ├── points3D.bin
+        └── project.ini
+```
+
+8. Third COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
+    * Create an `images.txt` with the image name and their XYZ position, relative to the centered Lidar Point using the file `cloud_centroid.txt`created at step 4
+    ```
+    python align_frames_with_lidar.py --root images --centroid_path cloud_centroid.txt --output images.txt
+    ```
+    This will create a file with image paths and corresponding XYZ coordinates at each line.
+    * ```
+mkdir -p output/georeferenced
+colmap model_aligner --input_path output/sparse --output_sparse output/georeferenced --ref_images_path images.txt

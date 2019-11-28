@@ -7,3 +7,5 @@ piexif
 pandas
 imageio
 pyntcloud
+ezdxf
+meshio
