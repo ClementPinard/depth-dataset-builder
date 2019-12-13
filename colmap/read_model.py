@@ -386,7 +386,7 @@ def write_points3D_text(points3D, path):
             fid.write(" ".join(track_strings) + "\n")
 
 
-def write_points3d_binary(points3D, path_to_model_file):
+def write_points3D_binary(points3D, path_to_model_file):
     """
     see: src/base/reconstruction.cc
         void Reconstruction::ReadPoints3DBinary(const std::string& path)
@@ -425,7 +425,7 @@ def write_model(cameras, images, points3D, path, ext):
     else:
         write_cameras_binary(cameras, os.path.join(path, "cameras" + ext))
         write_images_binary(images, os.path.join(path, "images" + ext))
-        write_points3d_binary(points3D, os.path.join(path, "points3D") + ext)
+        write_points3D_binary(points3D, os.path.join(path, "points3D") + ext)
     return cameras, images, points3D
 
 

@@ -9,6 +9,7 @@ parser.add_argument('--video_list', metavar='PATH',
                     help='path to list with relative path to images', type=Path)
 parser.add_argument('--input_model', metavar='DIR', type=Path)
 parser.add_argument('--output_model', metavar='DIR', default=None, type=Path)
+parser.add_argument('--format', choices=['.txt', '.bin'], default='.txt')
 
 
 def main():
@@ -24,9 +25,7 @@ def main():
     camera_id = images_per_name[image_list[0]].camera_id
     cameras = {camera_id: cameras[camera_id]}
 
-    rm.write_cameras_text(cameras, args.output_model / "cameras.txt")
-    rm.write_images_text(images_per_name, args.output_model / "images.txt")
-    rm.write_points3D_text({}, args.input_model / "points3D.txt")
+    rm.write_model(cameras, images_per_name, {}, args.output_model, args.format)
     return
 
 
