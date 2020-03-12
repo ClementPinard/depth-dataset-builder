@@ -116,8 +116,6 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     database = db.COLMAPDatabase.connect(database_filepath)
     database.create_tables()
     to_extract = total_frames - len(existing_pictures)
-    if to_extract <= 0:
-        return None, None
 
     print("extracting metadata for {} videos...".format(len(videos_list)))
     for v in tqdm(videos_list):
@@ -148,13 +146,17 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         print("Error")
         print((final_metadata["camera_id"] == 0))
 
-    if to_extract <= len(final_metadata):
+    if to_extract <= 0:
+        final_metadata["sampled"] = False
+    elif to_extract < len(final_metadata):
         print("subsampling based on K-Means, to get {}"
               " frames from videos, for a total of {} frames".format(to_extract, total_frames))
         final_metadata = optimal_sample(final_metadata, total_frames - len(existing_pictures),
                                         orientation_weight,
                                         resolution_weight)
         print("Done.")
+    else:
+        final_metadata["sampled"] = True
 
     print("Constructing COLMAP model with {:,} frames".format(len(final_metadata[final_metadata["sampled"]])))
 
@@ -210,7 +212,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         path_lists_output[v] = list(per_video_scan_image_paths)
         if save_space:
             frame_ids = list(video_metadata[video_metadata["sampled"]]["frame"].values)
-            env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
+            if len(frame_ids) > 0:
+                env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
         else:
             env["ffmpeg"].extract_images(v, video_folder)
 

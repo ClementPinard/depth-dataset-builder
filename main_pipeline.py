@@ -1,5 +1,5 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from wrappers import Colmap, FFMpeg, PDraw, ETH3D
+from wrappers import Colmap, FFMpeg, PDraw, ETH3D, PCLUtil
 from global_options import add_global_options
 import meshlab_xml_writer as mxw
 import add_video_to_db as avtd
@@ -60,6 +60,7 @@ exec_parser.add_argument("--colmap", default="colmap",
 exec_parser.add_argument("--eth3d", default="../dataset-pipeline/build",
                          type=Path, help="ETH3D detaset pipeline exec files folder location")
 exec_parser.add_argument("--ffmpeg", default="ffmpeg")
+exec_parser.add_argument("--pcl_util", default="pcl_util/build", type=Path)
 
 video_registration_parser = parser.add_argument_group("Video Registration")
 video_registration_parser.add_argument("--vocab_tree", type=Path, default="vocab_tree_flickr100K_words256K.bin")
@@ -82,7 +83,7 @@ def print_step(step_number, step_name):
         print("=================")
 
 
-def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, **env):
+def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, pcl_util, **env):
     converted_clouds = []
     centroids = []
     for pc in pointclouds:
@@ -90,8 +91,10 @@ def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, **env):
                                                  output_folder=lidar_path,
                                                  verbose=verbose >= 1)
         centroids.append(centroid)
-        eth3d.clean_pointcloud(ply, filter=(5, 10))
-        converted_clouds.append(ply + ".inliers.ply")
+        eth3d.clean_pointcloud(ply, filter=(6, 2))
+        pcl_util.subsample(input_file=ply + ".inliers.ply", output_file=ply + "_subsampled.ply", resolution=0.1)
+
+        converted_clouds.append(ply + "_subsampled.ply")
     return converted_clouds, centroids[0]
 
 
@@ -171,6 +174,8 @@ def main():
     env["pdraw"] = pdraw
     eth3d = ETH3D(args.eth3d, env["image_path"], quiet=args.verbose < 1)
     env["eth3d"] = eth3d
+    pcl_util = PCLUtil(args.pcl_util)
+    env["pcl_util"] = pcl_util
 
     las_files = (args.input_folder/"Lidar").files("*.las")
     ply_files = (args.input_folder/"Lidar").files("*.ply")
@@ -198,13 +203,14 @@ def main():
     if i + 1 not in args.skip_step:
         print_step(i, s)
         path_lists, env["videos_output_folders"] = extract_videos_to_workspace(**env)
-        with open(env["video_frame_list_thorough"], "w") as f:
-            f.write("\n".join(path_lists["thorough"]))
-        with open(env["georef_frames_list"], "w") as f:
-            f.write("\n".join(path_lists["georef"]))
-        for v in env["videos_list"]:
-            with open(env["videos_output_folders"][v] / "to_scan.txt", "w") as f:
-                f.write("\n".join(path_lists[v]))
+        if path_lists is not None:
+            with open(env["video_frame_list_thorough"], "w") as f:
+                f.write("\n".join(path_lists["thorough"]))
+            with open(env["georef_frames_list"], "w") as f:
+                f.write("\n".join(path_lists["georef"]))
+            for v in env["videos_list"]:
+                with open(env["videos_output_folders"][v] / "to_scan.txt", "w") as f:
+                    f.write("\n".join(path_lists[v]))
     else:
         by_basename = {v.basename(): v for v in env["videos_list"]}
         for folder in env["video_path"].walkdirs():
@@ -240,8 +246,8 @@ def main():
         print_step(i, s)
 
         with_normals_path = env["lidar_path"] / "with_normals.ply"
-        eth3d.compute_normals(with_normals_path, env["aligned_mlp"], neighbor_count=8)
-        eth3d.triangulate_mesh(env["occlusion_ply"], with_normals_path, resolution=20)
+        eth3d.compute_normals(with_normals_path, env["aligned_mlp"], neighbor_radius=0.2)
+        pcl_util.triangulate_mesh(env["occlusion_ply"], with_normals_path, resolution=0.2)
         eth3d.create_splats(env["splats_ply"], with_normals_path, env["occlusion_ply"], threshold=0.1)
         mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"], env["splats_ply"]])
         if args.save_space:

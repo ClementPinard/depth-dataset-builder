@@ -29,6 +29,7 @@ def load_and_convert(input_file, output_folder, verbose=False):
                                            *(cloud.centroid/1000)))
 
     output_centroid = cloud.centroid
+    print(cloud.centroid)
     np.savetxt(txt_path, output_centroid)
 
     xyz = cloud.points[['x', 'y', 'z']]
