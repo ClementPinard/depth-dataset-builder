@@ -1,4 +1,5 @@
 torch
+laspy
 pyproj
 path.py
 tqdm
@@ -9,3 +10,6 @@ imageio
 pyntcloud
 ezdxf
 meshio
+scikit-learn
+pebble
+dicttoxml

@@ -71,7 +71,7 @@ def main():
     print_cams(cameras)
     camera_id = int(input("which camera for the video ?\n"))
     images = rm.read_images_binary(args.input_model / "images.bin")
-    images = {}
+    # images = {}
     image_ids = get_id_from_db(db)
     for name in image_list:
         if name not in image_ids.keys():

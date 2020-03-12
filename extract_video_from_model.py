@@ -1,6 +1,7 @@
-from colmap import read_model as rm
+from colmap_util import read_model as rm
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
+import pandas as pd
 
 parser = ArgumentParser(description='create a new colmap model with only the frames of selected video',
                         formatter_class=ArgumentDefaultsHelpFormatter)
@@ -9,23 +10,27 @@ parser.add_argument('--video_list', metavar='PATH',
                     help='path to list with relative path to images', type=Path)
 parser.add_argument('--input_model', metavar='DIR', type=Path)
 parser.add_argument('--output_model', metavar='DIR', default=None, type=Path)
-parser.add_argument('--format', choices=['.txt', '.bin'], default='.txt')
+parser.add_argument('--output_format', choices=['.txt', '.bin'], default='.txt')
+
+
+def extract_video(input_model, output_model, video_metadata_path, output_format='.bin'):
+    cameras = rm.read_cameras_binary(input_model / "cameras.bin")
+    images = rm.read_images_binary(input_model / "images.bin")
+    images_per_name = {}
+    video_metadata = pd.read_csv(video_metadata_path)
+    image_names = video_metadata["image_path"]
+    for id, image in images.items():
+        if image.name in image_names:
+            images_per_name[image.name] = image
+    camera_ids = video_metadata["camera_id"].unique()
+    output_cameras = {cid: cameras[cid] for cid in camera_ids}
+
+    rm.write_model(output_cameras, images_per_name, {}, output_model, output_format)
 
 
 def main():
     args = parser.parse_args()
-    with open(args.video_list, 'r') as f:
-        image_list = f.read().splitlines()
-    cameras = rm.read_cameras_binary(args.input_model / "cameras.bin")
-    images = rm.read_images_binary(args.input_model / "images.bin")
-    images_per_name = {}
-    for id, image in images.items():
-        if image.name in image_list:
-            images_per_name[image.name] = image
-    camera_id = images_per_name[image_list[0]].camera_id
-    cameras = {camera_id: cameras[camera_id]}
-
-    rm.write_model(cameras, images_per_name, {}, args.output_model, args.format)
+    extract_video(args.input_model, args.output_model, args.metadata_path, args.output_format)
     return
 
 

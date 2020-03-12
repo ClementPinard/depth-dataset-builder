@@ -4,6 +4,8 @@ from path import Path
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import pandas as pd
 from tqdm import tqdm
+import ffmpeg
+import anafi_metadata as am
 
 
 def extract_images(folder_path, file_path, fps):
@@ -29,14 +31,13 @@ def extract_metadata(folder_path, file_path, native_wrapper):
     return output_file
 
 
-def add_gps_to_exif(csv_file, image_paths, fps):
-    metadata = pd.read_csv(csv_file, sep=" ")
+def add_gps_to_exif(metadata, image_paths, fps):
     metadata = metadata.set_index("time")
     metadata.index = pd.to_datetime(metadata.index, unit="us")
 
     if fps is not None:
         metadata = metadata.resample("{:.3f}S".format(1/fps)).first()
-        metadata.to_csv(csv_file.stripext() + "_{}fps.csv".format(fps), sep=" ")
+        metadata.to_csv(image_paths[0].parent / "metadata_{}fps.csv".format(fps), sep=" ")
 
     print("Modifying gps EXIF for colmap...")
     for img_path, row in tqdm(zip(image_paths, metadata.iterrows()), total=len(image_paths)):
@@ -59,9 +60,9 @@ def workflow(root, output_folder, video_path, args):
     if args.fps is not None:
         output_folder += "_{}fps".format(args.fps)
     output_folder.mkdir_p()
-    images_path_list = extract_images(output_folder, video_path, args.fps)
-    csv_path = extract_metadata(output_folder, video_path, args.nw)
-    add_gps_to_exif(csv_path, images_path_list, args.fps)
+    images_path_list = ffmpeg.extract_images(output_folder, video_path, args.fps)
+    metadata = am.extract_metadata(output_folder, video_path, args.nw)
+    add_gps_to_exif(metadata, images_path_list, args.fps)
     save_images_path_list(output_folder, args.origin or root, images_path_list)
 
 

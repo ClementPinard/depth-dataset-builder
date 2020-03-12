@@ -25,7 +25,7 @@ def prepare_network():
 
 def erosion(width, mask):
     kernel = torch.ones(1, 1, 2 * width + 1, 2 * width + 1).to(mask) / (2 * width + 1)**2
-    padded = torch.nn.functional.pad(mask.reshape(1, 1, *mask.shape), [width]*4, value=1)
+    padded = torch.nn.functional.pad(mask.unsqueeze(1), [width]*4, value=1)
     filtered = torch.nn.functional.conv2d(padded, kernel)
     mask = (filtered == 1).float()
 
@@ -33,26 +33,51 @@ def erosion(width, mask):
 
 
 @torch.no_grad()
-def extract_sky_mask(network, image_path, mask_folder):
-    image = imageio.imread(image_path)
-    h, w, _ = image.shape
-    image_tensor = torch.from_numpy(image).float()/255
-    image_tensor = image_tensor.permute(2, 0, 1).unsqueeze(0)  # shape [1, C, H, W]
+def extract_sky_mask(network, image_paths, mask_folder):
+    images = np.stack([imageio.imread(i) for i in image_paths])
+    b, h, w, _ = images.shape
+    image_tensor = torch.from_numpy(images).float()/255
+    image_tensor = image_tensor.permute(0, 3, 1, 2)  # shape [B, C, H, W]
 
-    scale_factor = 512/image_tensor.shape[2]
+    scale_factor = 512/image_tensor.shape[3]
     reduced = F.interpolate(image_tensor, scale_factor=scale_factor, mode='area')
 
     result = network(reduced.cuda())
-    classes = torch.max(result[0], 0)[1]
+    classes = torch.max(result, 1)[1]
     mask = (classes == sky_index).float()
 
     filtered_mask = erosion(1, mask)
-
     upsampled = F.interpolate(filtered_mask, size=(h, w), mode='nearest')
 
-    final_mask = 1 - upsampled[0].permute(1, 2, 0).cpu().numpy()
+    final_masks = 1 - upsampled.permute(0, 2, 3, 1).cpu().numpy()
 
-    imageio.imwrite(mask_folder/(image_path.basename() + '.png'), (final_mask*255).astype(np.uint8))
+    for f, path in zip(final_masks, image_paths):
+        imageio.imwrite(mask_folder/(path.basename() + '.png'), (f*255).astype(np.uint8))
+
+
+def process_folder(folder_to_process, image_path, mask_path, pic_ext, verbose=False, batchsize=8, **env):
+    network = prepare_network()
+    folders = [folder_to_process] + list(folder_to_process.walkdirs())
+
+    for folder in folders:
+
+        mask_folder = mask_path/image_path.relpathto(folder)
+        mask_folder.makedirs_p()
+        images = sum((folder.files('*{}'.format(ext)) for ext in pic_ext), [])
+        if images:
+            if verbose:
+                print("Generating masks for images in {}".format(str(folder)))
+                images = tqdm(images)
+            to_process = []
+            for image_file in images:
+                if (mask_folder / (image_file.basename() + '.png')).isfile():
+                    continue
+                to_process.append(image_file)
+                if len(to_process) == batchsize:
+                    extract_sky_mask(network, to_process, mask_folder)
+                    to_process = []
+            if to_process:
+                extract_sky_mask(network, to_process, mask_folder)
 
 
 parser = ArgumentParser(description='sky mask generator using ENet trained on cityscapes',
@@ -72,12 +97,4 @@ if __name__ == '__main__':
     folders = [root] + list(root.walkdirs())
     file_exts = ['jpg', 'JPG']
 
-    for folder in folders:
-
-        mask_folder = mask_root/root.relpathto(folder)
-        mask_folder.mkdir_p()
-        images = sum((folder.files('*{}'.format(ext)) for ext in file_exts), [])
-        if images:
-            print("Generating masks for images in {}".format(str(folder)))
-            for image_path in tqdm(images):
-                extract_sky_mask(network, image_path, mask_folder)
+    process_folder(root, root, mask_root, file_exts, True)
