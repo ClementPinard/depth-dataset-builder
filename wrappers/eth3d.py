@@ -31,11 +31,6 @@ class ETH3D(Wrapper):
             options += ["--neighbor_radius", str(neighbor_radius)]
         self.__call__(options)
 
-    def triangulate_mesh(self, output_mesh, input_normals, resolution=20):
-        options = ["MeshTriangulator", "--point_normal_cloud_path", input_normals,
-                   "--resolution", str(resolution), "--out_mesh", output_mesh]
-        self.__call__(options)
-
     def create_splats(self, output_splats, pointnormals_ply, occlusion_ply, threshold=0.1):
         options = ["SplatCreator", "--point_normal_cloud_path", pointnormals_ply,
                    "--mesh_path", occlusion_ply,

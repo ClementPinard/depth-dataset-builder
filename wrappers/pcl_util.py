@@ -16,7 +16,7 @@ class PCLUtil(Wrapper):
                    "--resolution", str(resolution), "--output", output_file]
         self.__call__(options)
 
-    def triangulate_mesh(self, input_file, output_file, resolution=0.2):
+    def triangulate_mesh(self, output_file, input_file, resolution=0.2):
         options = ["MeshTriangulator", "--point_normal_cloud_path", input_file,
                    "--resolution", str(resolution), "--out_mesh", output_file]
         self.__call__(options)

@@ -19,7 +19,7 @@ global_steps = ["Point Cloud Preparation",
                 "Alignment of photogrammetric reconstruction with Lidar point cloud",
                 "Occlusion Mesh computing"]
 
-pre_vid_steps = ["Full video extraction"
+pre_vid_steps = ["Full video extraction",
                  "Sky mask generation",
                  "Complete photogrammetry with video at 1 fps",
                  "Localizing remaining frames",
@@ -43,7 +43,13 @@ main_parser.add_argument('-v', '--verbose', action="count", default=0)
 main_parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
 main_parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"])
 main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"])
+main_parser.add_argument('--fine_sift_features', action="store_true")
 main_parser.add_argument('--save_space', action="store_true")
+main_parser.add_argument('--add_new_videos', action="store_true")
+
+pcp_parser = parser.add_argument("PointCLoud preparation")
+pcp_parser.add_argument("--pointcloud_resolution", default=0.1, type=float)
+pcp_parser.add_argument("--SOR", default=[6, 2], nargs=2, type=int)
 
 ve_parser = parser.add_argument_group("Video extractor")
 ve_parser.add_argument('--total_frames', default=500, type=int)
@@ -62,8 +68,16 @@ exec_parser.add_argument("--eth3d", default="../dataset-pipeline/build",
 exec_parser.add_argument("--ffmpeg", default="ffmpeg")
 exec_parser.add_argument("--pcl_util", default="pcl_util/build", type=Path)
 
-video_registration_parser = parser.add_argument_group("Video Registration")
-video_registration_parser.add_argument("--vocab_tree", type=Path, default="vocab_tree_flickr100K_words256K.bin")
+vr_parser = parser.add_argument_group("Video Registration")
+vr_parser.add_argument("--vocab_tree", type=Path, default="vocab_tree_flickr100K_words256K.bin")
+
+om_parser = parser.add_argument_group("Occlusion Mesh")
+om_parser.add_argument('--normal_radius', default=0.2, type=float)
+om_parser.add_argument('--mesh_resolution', default=0.2, type=float)
+om_parser.add_argument('--splat_threshold', default=0.1, type=float)
+om_parser.add_argument('--resolution_weight', default=1, type=float)
+om_parser.add_argument('--num_neighbours', default=10, type=int)
+om_parser.add_argument('--system', default="epsg:2154")
 
 
 def print_workflow():
@@ -83,7 +97,7 @@ def print_step(step_number, step_name):
         print("=================")
 
 
-def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, pcl_util, **env):
+def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, pcl_util, pointcloud_resolution, save_space, **env):
     converted_clouds = []
     centroids = []
     for pc in pointclouds:
@@ -92,13 +106,17 @@ def convert_point_cloud(pointclouds, lidar_path, verbose, eth3d, pcl_util, **env
                                                  verbose=verbose >= 1)
         centroids.append(centroid)
         eth3d.clean_pointcloud(ply, filter=(6, 2))
-        pcl_util.subsample(input_file=ply + ".inliers.ply", output_file=ply + "_subsampled.ply", resolution=0.1)
+        pcl_util.subsample(input_file=ply + ".inliers.ply", output_file=ply + "_subsampled.ply", resolution=pointcloud_resolution)
+        if save_space:
+            (ply + ".inliers.ply").remove()
+            (ply + ".outliers.ply").remove()
+            ply.remove()
 
         converted_clouds.append(ply + "_subsampled.ply")
     return converted_clouds, centroids[0]
 
 
-def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap, raw_ext, pic_ext, **env):
+def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap, raw_ext, pic_ext, fine_sift_features, **env):
     picture_folder = input_folder / "Pictures"
     picture_folder.merge_tree(image_path)
     raw_files = sum((list(image_path.walkfiles('*{}'.format(ext))) for ext in raw_ext), [])
@@ -109,7 +127,7 @@ def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap, r
             imageio.imsave(raw.stripext() + ".jpg", rgb)
         raw.remove()
     gsm.process_folder(folder_to_process=image_path, image_path=image_path, pic_ext=pic_ext, **env)
-    colmap.extract_features(per_sub_folder=True, fine=False)
+    colmap.extract_features(per_sub_folder=True, fine=fine_sift_features)
     return sum((list(image_path.walkfiles('*{}'.format(ext))) for ext in pic_ext), [])
 
 
@@ -159,6 +177,8 @@ def main():
     env = vars(args)
     if args.show_steps:
         print_workflow()
+    if args.add_new_videos:
+        args.skip_step += [1, 2, 4, 5, 6]
     if args.begin_step is not None:
         args.skip_step += list(range(args.begin_step))
     check_input_folder(args.input_folder)
@@ -212,17 +232,18 @@ def main():
                 with open(env["videos_output_folders"][v] / "to_scan.txt", "w") as f:
                     f.write("\n".join(path_lists[v]))
     else:
-        by_basename = {v.basename(): v for v in env["videos_list"]}
+        env["videos_output_folders"] = {}
+        by_name = {v.namebase: v for v in env["videos_list"]}
         for folder in env["video_path"].walkdirs():
             video_name = folder.basename()
-            if video_name in by_basename.keys():
-                env["videos_output_folders"][by_basename[video_name]] = folder
+            if video_name in by_name.keys():
+                env["videos_output_folders"][by_name[video_name]] = folder
 
     i, s = next(i_global_steps)
     if i + 1 not in args.skip_step:
         print_step(i, s)
         gsm.process_folder(folder_to_process=env["video_path"], **env)
-        colmap.extract_features(image_list=env["video_frame_list_thorough"], fine=False)
+        colmap.extract_features(image_list=env["video_frame_list_thorough"], fine=args.fine_sift_features)
         colmap.match()
         colmap.map(output_model=env["thorough_recon"].parent)
 
@@ -246,9 +267,9 @@ def main():
         print_step(i, s)
 
         with_normals_path = env["lidar_path"] / "with_normals.ply"
-        eth3d.compute_normals(with_normals_path, env["aligned_mlp"], neighbor_radius=0.2)
-        pcl_util.triangulate_mesh(env["occlusion_ply"], with_normals_path, resolution=0.2)
-        eth3d.create_splats(env["splats_ply"], with_normals_path, env["occlusion_ply"], threshold=0.1)
+        eth3d.compute_normals(with_normals_path, env["aligned_mlp"], neighbor_radius=args.normal_radius)
+        pcl_util.triangulate_mesh(env["occlusion_ply"], with_normals_path, resolution=args.mesh_resolution)
+        eth3d.create_splats(env["splats_ply"], with_normals_path, env["occlusion_ply"], threshold=args.splat_threshold)
         mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"], env["splats_ply"]])
         if args.save_space:
             with_normals_path.remove()
@@ -261,12 +282,16 @@ def main():
         current_db = current_video_folder / "video.db"
         current_metadata = current_video_folder / "metadata.csv"
         former_db.copy(current_db)
+        image_list_path = current_video_folder / "to_scan.txt"
         colmap.db = current_db
 
         i, s = next(i_pv_steps)
         print_step(i, s)
-        existing_images = list(current_video_folder.files())
-        ffmpeg.extract_images(v, current_video_folder)
+        if args.save_space:
+            existing_images = list(current_video_folder.files())
+            ffmpeg.extract_images(v, current_video_folder)
+        else:
+            print("Already Done.")
 
         i, s = next(i_pv_steps)
         print_step(i, s)
@@ -276,15 +301,11 @@ def main():
         print_step(i, s)
         image_list_path = current_video_folder / "to_scan.txt"
         avtd.add_to_db(current_db, current_metadata, image_list_path)
-        colmap.extract_features(image_list=image_list_path, fine=False)
-
-        i, s = next(i_pv_steps)
-        print_step(i, s)
-
+        colmap.extract_features(image_list=image_list_path, fine=args.fine_sift_features)
         colmap.match(method="sequential", vocab_tree=args.vocab_tree)
         video_output_model = env["video_recon"] / v.basename()
         video_output_model.makedirs_p()
-        colmap.map(output_model=video_output_model, input_model=env["georef"])
+        colmap.map(output_model=video_output_model, input_model=env["georef_recon"])
         colmap.align_model(output_model=video_output_model,
                            input_model=video_output_model,
                            ref_images=env["georef_frames_list"])
@@ -292,7 +313,7 @@ def main():
         i, s = next(i_pv_steps)
         print_step(i, s)
         avtd.add_to_db(current_db, current_metadata, frame_list_path=None)
-        colmap.extract_features(image_list=current_video_folder / "to_scan.txt", fine=False)
+        colmap.extract_features(fine=args.fine_sift_features)
         colmap.match(method="sequential", vocab_tree=args.vocab_tree)
         colmap.register_images(output_model=video_output_model, input_model=video_output_model)
         colmap.adjust_bundle(output_model=video_output_model, input_model=video_output_model)

@@ -29,7 +29,7 @@ class Colmap(Wrapper):
                    "--SiftMatching.guided_matching", "0"]
         if method == "sequential":
             assert vocab_tree is not None
-            options += ["--SequentialMatching.loop_detection", 1,
+            options += ["--SequentialMatching.loop_detection", "1",
                         "--SequentialMatching.vocab_tree_path", vocab_tree]
 
         self.__call__(options)

@@ -71,7 +71,7 @@ def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, cent
     metadata["width"] = w
     metadata["framerate"] = f
     metadata["video"] = file_path
-    metadata['frame'] = metadata.index
+    metadata['frame'] = metadata.index + 1
     if save_path is not None:
         metadata.to_csv(save_path)
     return metadata

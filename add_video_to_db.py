@@ -23,7 +23,7 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
     frame_list = []
     if frame_list_path is not None:
         with open(frame_list_path, "r") as f:
-            frame_list = [line[:1] for line in f.readlines()]
+            frame_list = [line[:-1] for line in f.readlines()]
         metadata = metadata[metadata["image_path"].isin(frame_list)]
 
     for image_id, row in tqdm(metadata.iterrows(), total=len(metadata)):
@@ -34,11 +34,15 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
         else:
             frame_gps = np.full(3, np.NaN)
         try:
+            print(image_path, camera_id)
             database.add_image(image_path, int(camera_id), prior_t=frame_gps)
         except IntegrityError:
             sql_string = "SELECT camera_id FROM images WHERE name='{}'".format(image_path)
-            existing_camera_id = print(next(database.execute(sql_string))[0])
+            row = next(database.execute(sql_string))
+            existing_camera_id = row[0]
             assert(existing_camera_id == camera_id)
+    database.commit()
+    database.close()
 
 
 def main():
