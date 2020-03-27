@@ -27,6 +27,12 @@ main (int argc, char** argv)
   pcl::console::parse_argument(argc, argv, "--resolution", resolution);
   std::string output_path;
   pcl::console::parse_argument(argc, argv, "--output", output_path);
+
+  if (output_path.empty()){
+    LOG(ERROR) << "No output path was given";
+    LOG(INFO) << "Usage: " << argv[0] << " --point_cloud_path <file.ply> --resolution <m> --out_mesh <file.ply>";
+    return EXIT_FAILURE;
+  }
   
   // Load point cloud with normals.
   LOG(INFO) << "Loading point cloud ...";
@@ -39,7 +45,8 @@ main (int argc, char** argv)
   LOG(INFO) << "Subsampling to have a mean distance between points of " << resolution << " m";
   point_cloud = filter<pcl::PointXYZ>(point_cloud, resolution);
 
-  pcl::io::savePLYFileBinary (output_path, *point_cloud);
+  if (!output_path.empty())
+    pcl::io::savePLYFileBinary (output_path, *point_cloud);
 
   return (0);
 }

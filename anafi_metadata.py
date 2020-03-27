@@ -1,8 +1,6 @@
-from subprocess import PIPE, call
 import pandas as pd
 import numpy as np
 from scipy import integrate
-import tempfile
 
 
 def extrapolate_position(speeds, timestamps, initial_position, final_position):
@@ -26,11 +24,12 @@ def preprocess_metadata(metadata, proj, centroid):
         return pd.Series(proj(*x), index=["x", "y"])
     position_xy = metadata[["location_longitude", "location_latitude"]].apply(lambda_fun, axis=1)
     metadata = metadata.join(position_xy)
+    metadata["z"] = metadata["location_altitude"]
     # Extrapolate position from speed and previous frames
 
     speed = metadata[["speed_east", "speed_north", "speed_down"]].values * np.array([1, 1, -1])
     timestamps = metadata["time"].values * 1e-6
-    positions = metadata[["x", "y", "location_altitude"]].values
+    positions = metadata[["x", "y", "z"]].values
     if metadata["location_valid"].unique().tolist() == [0]:
         metadata["indoor"] = True
         positions = extrapolate_position(speed, timestamps, None, None)
@@ -55,15 +54,15 @@ def preprocess_metadata(metadata, proj, centroid):
             for start, end in zip(invalidity_start, validity_start):
                 positions[start:end] = extrapolate_position(speed[start:end], timestamps[start:end], positions[start], positions[end-1])
         positions -= centroid
-        print(positions)
 
-    metadata["x"], metadata["y"], metadata["location_altitude"] = positions.transpose()
+    metadata["x"], metadata["y"], metadata["z"] = positions.transpose()
 
     return metadata
 
 
 def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, centroid, save_path=None):
     metadata = native_wrapper.vmeta_extract(file_path)
+    metadata = metadata.iloc[:-1]
     metadata = preprocess_metadata(metadata, proj, centroid)
     video_quality = h * w / f
     metadata["video_quality"] = video_quality

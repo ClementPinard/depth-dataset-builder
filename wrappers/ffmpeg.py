@@ -4,8 +4,8 @@ import json
 
 
 class FFMpeg(Wrapper):
-    def __init__(self, binary="ffmpeg", probe="ffprobe", quiet=False):
-        super().__init__(binary, quiet)
+    def __init__(self, binary="ffmpeg", probe="ffprobe", logfile=None, quiet=False):
+        super().__init__(binary, quiet, logfile)
         self.binary = binary
         self.probe = probe
 
@@ -33,6 +33,7 @@ class FFMpeg(Wrapper):
         frame_files = sorted(output_folder.files(video_file.namebase + "tmp_*.jpg"))
         for f, frame_id in zip(frame_files, frame_ids):
             f.rename(f.parent / (video_file.namebase + "_{:05d}.jpg".format(frame_id)))
+        return sorted(output_folder.files("*.jpg"))
 
     def get_size_and_framerate(self, video_file):
         probe_process = Popen([self.probe, "-show_entries", "stream=height,width,r_frame_rate",
@@ -40,6 +41,12 @@ class FFMpeg(Wrapper):
                               stdout=PIPE, stderr=PIPE)
         json_cam = json.loads(probe_process.communicate()[0])['streams'][0]
         return int(json_cam["width"]), int(json_cam["height"]), frac_to_float(json_cam["r_frame_rate"])
+
+    def create_video(self, video_path, glob_pattern, fps=30):
+        ffmpeg_options = ["-y", "-r", str(fps),
+                          "-pattern_type", "glob", "-i",
+                          glob_pattern, video_path]
+        self.__call__(ffmpeg_options)
 
 
 def frac_to_float(frac_str):

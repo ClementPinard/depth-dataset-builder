@@ -20,7 +20,7 @@ def create_project(mlp_path, model_paths, labels=None, transforms=None):
         mesh.set("label", l)
         mesh.set("filename", m)
         matrix = etree.SubElement(mesh, "MLMatrix44")
-        matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) for row in t) + "\n"
+        matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in t) + "\n"
     tree = etree.ElementTree(base)
     tree.write(mlp_path, pretty_print=True)
 
@@ -31,6 +31,17 @@ def remove_mesh_from_project(input_mlp, output_mlp, index):
     root = to_modify.getroot()
     if index < len(root[0][0]):
         root[0].remove(root[0][index])
+    to_modify.write(output_mlp, pretty_print=True)
+
+
+def apply_transform_to_project(input_mlp, output_mlp, transform):
+    with open(input_mlp, "r") as f:
+        to_modify = etree.parse(f)
+    meshgroup = to_modify.getroot()[0]
+    for mesh in meshgroup:
+        former_transform = np.fromstring(mesh[0].text, sep=" ").reshape(4, 4)
+        new_transform = transform @ former_transform
+        mesh[0].text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in new_transform) + "\n"
     to_modify.write(output_mlp, pretty_print=True)
 
 

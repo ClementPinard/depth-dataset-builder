@@ -4,6 +4,7 @@ from wrappers import FFMpeg, PDraw
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances_argmin_min
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from edit_exif import set_gps_location
 from path import Path
 import pandas as pd
 import numpy as np
@@ -35,13 +36,6 @@ parser.add_argument('--num_neighbours', default=10, type=int)
 parser.add_argument('--save_space', action="store_true")
 
 
-def print_cams(cameras):
-    print("id \t model \t \t width \t height \t params")
-    for id, c in cameras.items():
-        param_string = " ".join(["{:.3f}".format(p) for p in c.params])
-        print("{} \t {} \t {} \t {} \t {}".format(id, c.model, c.width, c.height, param_string))
-
-
 def world_coord_from_frame(frame_qvec, frame_tvec):
     '''
     frame_qvec is written in the NED system (north east down)
@@ -59,9 +53,32 @@ def world_coord_from_frame(frame_qvec, frame_tvec):
     return cam_qvec, cam_tvec
 
 
+def set_gps(frames_list, metadata, image_path):
+    for frame in frames_list:
+        relative = str(frame.relpath(image_path))
+        row = metadata[metadata["image_path"] == relative]
+        if len(row) > 0:
+            row = row.iloc[0]
+            set_gps_location(frame,
+                             lat=row["location_latitude"],
+                             lng=row["location_longitude"],
+                             altitude=row["location_altitude"])
+
+
+def get_georef(metadata):
+    relevant_data = metadata[["location_valid", "image_path", "x", "y", "z"]]
+    path_list = []
+    georef_list = []
+    for _, (gps, path, x, y, alt) in relevant_data.iterrows():
+        path_list.append(path)
+        if gps == 1:
+            georef_list.append("{} {} {} {}\n".format(path, x, y, alt))
+    return georef_list, path_list
+
+
 def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
     metadata["sampled"] = False
-    XYZ = metadata[["x", "y", "location_altitude"]].values
+    XYZ = metadata[["x", "y", "z"]].values
     axis_angle = metadata[["frame_quat_x", "frame_quat_y", "frame_quat_z"]].values
     if True in metadata["indoor"].unique():
         diameter = (XYZ.max(axis=0) - XYZ.min(axis=0))
@@ -138,6 +155,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     cam_fields = ["width", "height", "framerate", "picture_hfov", "picture_vfov"]
     cameras_dataframe = final_metadata[cam_fields].drop_duplicates()
     cameras_dataframe = register_new_cameras(cameras_dataframe, database, colmap_cameras, "PINHOLE")
+    print("Cameras : ")
     print(cameras_dataframe)
     final_metadata["camera_id"] = 0
     for cam_id, row in cameras_dataframe.iterrows():
@@ -174,8 +192,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                               "frame_quat_x",
                               "frame_quat_y",
                               "frame_quat_z"]].values
-            x, y, alt = row["x"], row["y"], row["location_altitude"]
-            frame_tvec = np.array([x, y, alt])
+            x, y, z = row[["x", "y", "z"]]
+            frame_tvec = np.array([x, y, z])
             if row["location_valid"]:
                 frame_gps = row[["location_longitude", "location_latitude", "location_altitude"]]
             else:
@@ -193,29 +211,31 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     rm.write_model(colmap_cameras, images, {}, output_video_folder, "." + output_colmap_format)
     print("COLMAP model created")
 
-    thorough_scan_images = final_metadata[final_metadata["sampled"]][["image_path", "x", "y", "location_altitude"]]
-    path_lists_output["thorough"] = []
-    path_lists_output["georef"] = []
-
-    for _, (path, x, y, alt) in thorough_scan_images.iterrows():
-        path_lists_output["thorough"].append(path)
-        path_lists_output["georef"].append("{} {} {} {}\n".format(path, x, y, alt))
+    thorough_georef, thorough_paths = get_georef(final_metadata[final_metadata["sampled"]])
+    path_lists_output["thorough"] = {}
+    path_lists_output["thorough"]["frames"] = thorough_paths
+    path_lists_output["thorough"]["georef"] = thorough_georef
 
     print("Extracting frames from videos")
 
     for v in tqdm(videos_list):
         video_metadata = final_metadata[final_metadata["video"] == v]
-        image_paths = video_metadata.set_index(pd.to_datetime(video_metadata["time"], unit="us"))["image_path"]
+        by_time = video_metadata.set_index(pd.to_datetime(video_metadata["time"], unit="us"))
         video_folder = video_output_folders[v]
         video_metadata.to_csv(video_folder/"metadata.csv")
-        per_video_scan_image_paths = image_paths.resample("{:.3f}S".format(1/fps)).first()
-        path_lists_output[v] = list(per_video_scan_image_paths)
+        path_lists_output[v] = {}
+        video_metadata_1fps = by_time.resample("{:.3f}S".format(1/fps)).first()
+        georef, frame_paths = get_georef(video_metadata_1fps)
+        path_lists_output[v]["frames_lowfps"] = frame_paths
+        path_lists_output[v]["georef_lowfps"] = georef
+        path_lists_output[v]["frames_full"] = list(video_metadata["image_path"])
         if save_space:
             frame_ids = list(video_metadata[video_metadata["sampled"]]["frame"].values)
             if len(frame_ids) > 0:
-                env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
+                extracted_frames = env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
         else:
-            env["ffmpeg"].extract_images(v, video_folder)
+            extracted_frames = env["ffmpeg"].extract_images(v, video_folder)
+        set_gps(extracted_frames, video_metadata, image_path)
 
     return path_lists_output, video_output_folders
 

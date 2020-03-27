@@ -4,8 +4,8 @@ from .default_wrapper import Wrapper
 class ETH3D(Wrapper):
     """docstring for Colmap"""
 
-    def __init__(self, build_folder, image_path, quiet=False):
-        super().__init__(None, quiet)
+    def __init__(self, build_folder, image_path, logfile=None, quiet=False):
+        super().__init__(None, quiet, logfile)
         self.build_folder = build_folder
         self.image_path = image_path
 
@@ -38,14 +38,16 @@ class ETH3D(Wrapper):
                    "--distance_threshold", str(threshold)]
         self.__call__(options)
 
-    def create_ground_truth(self, scan_meshlab, occlusion_meshlab, colmap_model, output_folder,
+    def create_ground_truth(self, scan_meshlab, occlusion_ply, splats_ply, colmap_model, output_folder,
                             point_cloud=True, depth_maps=True, occlusion_maps=True):
         options = ["GroundTruthCreator", "--scan_alignment_path", scan_meshlab,
                    "--image_base_path", self.image_path, "--state_path", colmap_model,
-                   "--output_folder_path", output_folder, "--occlusion_mesh_paths", occlusion_meshlab,
+                   "--output_folder_path", output_folder, "--occlusion_mesh_path", occlusion_ply,
+                   "--occlusion_splats_path", splats_ply,
                    "--write_point_cloud", "1" if point_cloud else "0",
                    "--write_depth_maps", "1" if depth_maps else "0",
-                   "--write_occlusion_depth", "1" if occlusion_maps else "0"]
+                   "--write_occlusion_depth", "1" if occlusion_maps else "0",
+                   "--compress_depth_maps", "1"]
         self.__call__(options)
 
     def inspect_dataset(self, scan_meshlab, occlusion_meshlab, colmap_model, output_folder,

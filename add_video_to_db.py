@@ -21,6 +21,7 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
     database = db.COLMAPDatabase.connect(db_path)
 
     frame_list = []
+    frame_ids = []
     if frame_list_path is not None:
         with open(frame_list_path, "r") as f:
             frame_list = [line[:-1] for line in f.readlines()]
@@ -34,14 +35,26 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
         else:
             frame_gps = np.full(3, np.NaN)
         try:
-            print(image_path, camera_id)
-            database.add_image(image_path, int(camera_id), prior_t=frame_gps)
+            frame_ids.append(database.add_image(image_path, int(camera_id), prior_t=frame_gps))
         except IntegrityError:
             sql_string = "SELECT camera_id FROM images WHERE name='{}'".format(image_path)
             row = next(database.execute(sql_string))
             existing_camera_id = row[0]
             assert(existing_camera_id == camera_id)
     database.commit()
+    database.close()
+    return frame_ids
+
+
+def get_frame_without_features(db_path):
+    database = db.COLMAPDatabase.connect(db_path)
+    first_string = "SELECT image_id FROM descriptors WHERE cols=0"
+    descriptors = list(database.execute(first_string))
+    for d in descriptors:
+        second_string = "SELECT name FROM images WHERE image_id={}".format(d)
+        row = list(database.execute(second_string))[0]
+        print(row)
+
     database.close()
 
 

@@ -7,7 +7,9 @@ import numpy as np
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from tqdm import tqdm
-from subprocess import Popen, PIPE
+from wrappers import FFMpeg
+import gzip
+from pebble import ProcessPool
 
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
@@ -47,11 +49,33 @@ def apply_cmap_and_resize(depth, colormap, downscale):
         depth_norm = downscale_depth/max_d
         depth_norm[downscale_depth == np.inf] = 1
     else:
-        depth_norm = downscale_depth * 0 + 1
+        depth_norm = np.ones_like(downscale_depth)
 
     depth_viz = COLORMAPS[colormap](depth_norm)[:, :, :3]
     depth_viz[downscale_depth == np.inf] = 0
     return depth_viz*255
+
+
+def process_one_frame(img_path, depth_path, occ_path, output_dir, downscale):
+    img = imread(img_path)
+    h, w, _ = img.shape
+    assert((h/downscale).is_integer() and (w/downscale).is_integer())
+    output_img = np.zeros((2*(h//downscale), 2*(w//downscale), 3), dtype=np.uint8)
+    output_img[:h//downscale, :w//downscale] = rescale(img, 1/downscale, multichannel=True)*255
+    if depth_path is not None:
+        with gzip.open(depth_path, "rb") as f:
+            depth = np.frombuffer(f.read(), np.float32).reshape(h, w)
+        output_img[:h//downscale, w//downscale:] = apply_cmap_and_resize(depth, 'rainbow', downscale)
+        output_img[h//downscale:, :w//downscale] = \
+            output_img[:h//downscale, :w//downscale]//2 + \
+            output_img[:h//downscale, w//downscale:]//2
+
+    if occ_path is not None:
+        with gzip.open(occ_path, "rb") as f:
+            occ = np.frombuffer(f.read(), np.float32).reshape(h, w)
+        output_img[h//downscale:, w//downscale:] = apply_cmap_and_resize(occ, 'bone', downscale)
+
+    imwrite(output_dir/img_path.namebase + '.png', output_img)
 
 
 parser = ArgumentParser(description='create a vizualisation from ground truth created',
@@ -66,53 +90,45 @@ parser.add_argument('--fps', default='1')
 parser.add_argument('--downscale', type=int, default=1)
 
 
-def main():
-    args = parser.parse_args()
-    imgs = sorted(args.img_dir.files('*.jpg')) + sorted(args.img_dir.files('*.JPG'))
+def process_viz(depth_dir, img_dir, occ_dir, output_dir, video, fps, downscale, ffmpeg, threads=8, **env):
+    imgs = sorted(img_dir.files('*.jpg')) + sorted(img_dir.files('*.JPG'))
     depth_maps = []
     occ_maps = []
     for i in imgs:
         fname = i.basename()
-        depth_path = args.depth_dir / fname
+        depth_path = depth_dir / fname + ".gz"
         if depth_path.isfile():
             depth_maps.append(depth_path)
         else:
             print("Image {} was not registered".format(fname))
             depth_maps.append(None)
-        occ_path = args.occ_dir / fname
+        occ_path = occ_dir / fname + ".gz"
         if occ_path.isfile():
             occ_maps.append(occ_path)
         else:
             occ_maps.append(None)
-    args.output_dir.makedirs_p()
-    for i, d, o in tqdm(zip(imgs, depth_maps, occ_maps), total=len(imgs)):
-        img = imread(i)
-        h, w, _ = img.shape
-        assert((h/args.downscale).is_integer() and (w/args.downscale).is_integer())
-        output_img = np.zeros((2*(h//args.downscale), 2*(w//args.downscale), 3), dtype=np.uint8)
-        output_img[:h//args.downscale, :w//args.downscale] = rescale(img, 1/args.downscale, multichannel=True)*255
-        if d is not None:
-            depth = np.fromfile(d, np.float32).reshape(h, w)
-            output_img[:h//args.downscale, w//args.downscale:] = apply_cmap_and_resize(depth, 'rainbow', args.downscale)
-            output_img[h//args.downscale:, :w//args.downscale] = \
-                output_img[:h//args.downscale, :w//args.downscale]//2 + \
-                output_img[:h//args.downscale, w//args.downscale:]//2
+    output_dir.makedirs_p()
+    if threads == 1:
+        for i, d, o in tqdm(zip(imgs, depth_maps, occ_maps), total=len(imgs)):
+            process_one_frame(i, d, o, output_dir, downscale)
+    else:
+        with ProcessPool(max_workers=threads) as pool:
+            tasks = pool.map(process_one_frame, imgs, depth_maps, occ_maps, [output_dir]*len(imgs), [downscale]*len(imgs))
+            try:
+                for _ in tqdm(tasks.result(), total=len(imgs)):
+                    pass
+            except KeyboardInterrupt as e:
+                tasks.cancel()
+                raise e
 
-        if o is not None:
-            occ = np.fromfile(o, np.float32).reshape(h, w)
-            output_img[h//args.downscale:, w//args.downscale:] = apply_cmap_and_resize(occ, 'bone', args.downscale)
-
-        imwrite(args.output_dir/i.namebase + '.png', output_img)
-
-    if args.video:
-        video_path = str(args.output_dir/'video.mp4')
-        glob_pattern = str(args.output_dir/'*.png')
-        ffmpeg = Popen(["ffmpeg", "-y", "-r", args.fps,
-                        "-pattern_type", "glob", "-i",
-                        glob_pattern, video_path],
-                       stdout=PIPE, stderr=PIPE)
-        ffmpeg.wait()
+    if video:
+        video_path = str(output_dir/'video.mp4')
+        glob_pattern = str(output_dir/'*.png')
+        ffmpeg.create_video(video_path, glob_pattern, fps)
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    env = vars(args)
+    env["ffmpeg"] = FFMpeg()
+    process_viz(**env)

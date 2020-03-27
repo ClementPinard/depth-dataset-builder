@@ -13,3 +13,6 @@ target_link_libraries (PointCloudSubsampler ${PCL_LIBRARIES} glog)
 
 add_executable (MeshTriangulator mesh_triangulator.cpp)
 target_link_libraries (MeshTriangulator ${PCL_LIBRARIES} glog)
+
+add_executable (CloudRegistrator cloud_registrator.cpp)
+target_link_libraries(CloudRegistrator ${PCL_LIBRARIES} glog)

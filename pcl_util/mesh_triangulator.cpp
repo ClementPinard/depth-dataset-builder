@@ -59,6 +59,12 @@ int main(int argc, char** argv) {
   pcl::console::parse_argument(argc, argv, "--resolution", resolution);
   std::string mesh_output;
   pcl::console::parse_argument(argc, argv, "--out_mesh", mesh_output);
+
+  if (mesh_output.empty()){
+    LOG(ERROR) << "No output path was given";
+    LOG(INFO) << "Usage: " << argv[0] << " --point_normal_cloud_path <file.ply> --resolution <m> --out_mesh <file.ply>";
+    return EXIT_FAILURE;
+  }
   
   // Load point cloud with normals.
   LOG(INFO) << "Loading point cloud ...";

@@ -4,8 +4,8 @@ import pandas as pd
 
 
 class PDraw(Wrapper):
-    def __init__(self, wrapper_file, quiet=False):
-        super().__init__(wrapper_file, quiet)
+    def __init__(self, wrapper_file, logfile=None, quiet=False):
+        super().__init__(wrapper_file, quiet, logfile)
 
     def vmeta_extract(self, video):
         temp = tempfile.NamedTemporaryFile()
