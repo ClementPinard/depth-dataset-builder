@@ -16,3 +16,6 @@ target_link_libraries (MeshTriangulator ${PCL_LIBRARIES} glog)
 
 add_executable (CloudRegistrator cloud_registrator.cpp)
 target_link_libraries(CloudRegistrator ${PCL_LIBRARIES} glog)
+
+add_executable (CloudSOR pointcloud_sor.cpp)
+target_link_libraries(CloudSOR ${PCL_LIBRARIES} glog)

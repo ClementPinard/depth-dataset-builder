@@ -78,6 +78,8 @@ def process_folder(folder_to_process, image_path, mask_path, pic_ext, verbose=Fa
                     to_process = []
             if to_process:
                 extract_sky_mask(network, to_process, mask_folder)
+    del network
+    torch.cuda.empty_cache()
 
 
 parser = ArgumentParser(description='sky mask generator using ENet trained on cityscapes',

@@ -14,9 +14,9 @@ parser.add_argument('--output_format', choices=['.txt', '.bin'], default='.txt')
 parser.add_argument('--metadata_path', metavar="CSV", type=Path)
 
 
-def extract_video(input_model, output_model, video_metadata_path, output_format='.bin'):
-    cameras = rm.read_cameras_binary(input_model / "cameras.bin")
-    images = rm.read_images_binary(input_model / "images.bin")
+def extract_video(input, output, video_metadata_path, output_format='.bin'):
+    cameras = rm.read_cameras_binary(input / "cameras.bin")
+    images = rm.read_images_binary(input / "images.bin")
     images_per_name = {}
     video_metadata = pd.read_csv(video_metadata_path)
     image_names = video_metadata["image_path"].values
@@ -28,7 +28,7 @@ def extract_video(input_model, output_model, video_metadata_path, output_format=
     camera_ids = video_metadata["camera_id"].unique()
     output_cameras = {cid: cameras[cid] for cid in camera_ids if cid in cameras.keys()}
 
-    rm.write_model(output_cameras, images_per_name, {}, output_model, output_format)
+    rm.write_model(output_cameras, images_per_name, {}, output, output_format)
 
     return len(images_per_name) > 1
 

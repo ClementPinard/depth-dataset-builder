@@ -13,3 +13,5 @@ meshio
 scikit-learn
 pebble
 dicttoxml
+lxml
+scikit-image

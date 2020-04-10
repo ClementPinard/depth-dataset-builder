@@ -121,7 +121,7 @@ def register_new_cameras(cameras_dataframe, database, camera_dict, model_name="P
 
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
                          workspace, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
-                         output_colmap_format="bin", save_space=False, **env):
+                         output_colmap_format="bin", save_space=False, max_sequence_length=1000, **env):
     proj = Proj(system)
     indoor_videos = []
     final_metadata = []
@@ -228,7 +228,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         georef, frame_paths = get_georef(video_metadata_1fps)
         path_lists_output[v]["frames_lowfps"] = frame_paths
         path_lists_output[v]["georef_lowfps"] = georef
-        path_lists_output[v]["frames_full"] = list(video_metadata["image_path"])
+        num_chunks = len(video_metadata) // max_sequence_length + 1
+        path_lists_output[v]["frames_full"] = [list(frames) for frames in np.array_split(video_metadata["image_path"], num_chunks)]
         if save_space:
             frame_ids = list(video_metadata[video_metadata["sampled"]]["frame"].values)
             if len(frame_ids) > 0:

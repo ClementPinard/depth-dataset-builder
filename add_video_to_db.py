@@ -16,7 +16,7 @@ parser.add_argument('--database', metavar='DB', required=True,
                     help='path to colmap database file, to get the image ids right')
 
 
-def add_to_db(db_path, metadata_path, frame_list_path, **env):
+def add_to_db(db_path, metadata_path, frame_list_path, input_frame_ids=None, **env):
     metadata = pd.read_csv(metadata_path)
     database = db.COLMAPDatabase.connect(db_path)
 
@@ -26,8 +26,11 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
         with open(frame_list_path, "r") as f:
             frame_list = [line[:-1] for line in f.readlines()]
         metadata = metadata[metadata["image_path"].isin(frame_list)]
+    if input_frame_ids:
+        assert(len(metadata) == len(input_frame_ids))
+        metadata["input_frame_id"] = input_frame_ids
 
-    for image_id, row in tqdm(metadata.iterrows(), total=len(metadata)):
+    for _, row in tqdm(metadata.iterrows(), total=len(metadata)):
         image_path = row["image_path"]
         camera_id = row["camera_id"]
         if row["location_valid"]:
@@ -35,12 +38,14 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
         else:
             frame_gps = np.full(3, np.NaN)
         try:
-            frame_ids.append(database.add_image(image_path, int(camera_id), prior_t=frame_gps))
+            input_id = row["input_frame_id"] if input_frame_ids else None
+            frame_ids.append(database.add_image(image_path, int(camera_id), prior_t=frame_gps, image_id=input_id))
         except IntegrityError:
-            sql_string = "SELECT camera_id FROM images WHERE name='{}'".format(image_path)
-            row = next(database.execute(sql_string))
-            existing_camera_id = row[0]
+            sql_string = "SELECT camera_id, image_id FROM images WHERE name='{}'".format(image_path)
+            sql_output = next(database.execute(sql_string))
+            existing_camera_id = sql_output[0]
             assert(existing_camera_id == camera_id)
+            frame_ids.append(sql_output[1])
     database.commit()
     database.close()
     return frame_ids

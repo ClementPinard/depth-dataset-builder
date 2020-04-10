@@ -28,3 +28,9 @@ class PCLUtil(Wrapper):
         if output_cloud is not None:
             options += ["--output_cloud", output_cloud]
         self.__call__(options)
+
+    def filter_cloud(self, output_file, input_file, knn=6, std=5):
+        options = ["CloudSOR", "--input", input_file,
+                   "--output", output_file, "--knn", str(knn),
+                   "--std", str(std)]
+        self.__call__(options)
