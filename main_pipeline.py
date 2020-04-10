@@ -200,7 +200,7 @@ def prepare_workspace(path, env):
     env["georef_frames_list"] = env["image_path"] / "georef.txt"
 
     env["lidar_mlp"] = env["workspace"] / "lidar.mlp"
-    env["lidar_ply"] = env["lidar_path"] / "aligned.ply"
+    env["with_normals_path"] = env["lidar_path"] / "with_normals.ply"
     env["aligned_mlp"] = env["workspace"] / "aligned_model.mlp"
     env["occlusion_ply"] = env["lidar_path"] / "occlusion_model.ply"
     env["splats_ply"] = env["lidar_path"] / "splats_model.ply"
@@ -254,6 +254,13 @@ def main():
 
     i += 1
     if i not in args.skip_step:
+        print_step(i, "Occlusion Mesh computing")
+        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
+        pcl_util.triangulate_mesh(env["occlusion_ply"], env["with_normals_path"], resolution=args.mesh_resolution)
+        eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
+
+    i += 1
+    if i not in args.skip_step:
         print_step(i, "Pictures preparation")
         env["existing_pictures"] = extract_pictures_to_workspace(**env)
     else:
@@ -300,7 +307,7 @@ def main():
 
     i += 1
     if i not in args.skip_step:
-        print_step(i, "Alignment of photogrammetric reconstruction with Lidar point cloud")
+        print_step(i, "Alignment of photogrammetric reconstruction with GPS")
 
         colmap.align_model(output=env["georef_recon"],
                            input=env["thorough_recon"],
@@ -317,14 +324,10 @@ def main():
 
     i += 1
     if i not in args.skip_step:
-        print_step(i, "Occlusion Mesh computing")
-
-        with_normals_path = env["lidar_path"] / "with_normals.ply"
-        eth3d.compute_normals(with_normals_path, env["lidar_mlp"], neighbor_radius=args.normal_radius)
-        pcl_util.triangulate_mesh(env["occlusion_ply"], with_normals_path, resolution=args.mesh_resolution)
-        eth3d.create_splats(env["splats_ply"], with_normals_path, env["occlusion_ply"], threshold=args.splat_threshold)
+        print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud "
+                      "(This can e skipped to be done manually with e.g. CloudCompare")
         pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
-                                         lidar=with_normals_path,
+                                         lidar=env["with_normals_path"],
                                          output_matrix=env["matrix_path"],
                                          max_distance=10)
     if env["matrix_path"].isfile():
@@ -358,7 +361,7 @@ def main():
                 continue
 
             i_pv = 1
-            print("Now working on video {} [{}/{}]".format(v, j + 1, len(env["videos_list"])))
+            print("\n\nNow working on video {} [{}/{}]".format(v, j + 1, len(env["videos_list"])))
             thorough_db.copy(lowfps_db)
             colmap.db = lowfps_db
 
@@ -398,10 +401,11 @@ def main():
                                                                                         full_dbs,
                                                                                         chunk_output_models,
                                                                                         frame_ids_per_chunk)):
-                print("Localizing Chunk {}/{}".format(k + 1, len(full_dbs)))
+                print("\n\nLocalizing Chunk {}/{}".format(k + 1, len(full_dbs)))
                 chunk_output_model.makedirs_p()
                 lowfps_db.copy(full_db)
                 colmap.db = full_db
+                print("Adding chunk images to database")
                 avtd.add_to_db(full_db, current_metadata, frame_list_path=list_path, input_frame_ids=frame_ids)
                 colmap.extract_features(image_list=list_path, fine=args.fine_sift_features)
                 colmap.match(method="sequential", vocab_tree=env["indexed_vocab_tree"])

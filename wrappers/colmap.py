@@ -94,11 +94,11 @@ class Colmap(Wrapper):
                    "--PatchMatchStereo.geom_consistency", "1"]
         self.__call__(options)
 
-    def stereo_fusion(self, workspace, output_model):
-        options = ["stereo_fusion" "--workspace_path", workspace,
+    def stereo_fusion(self, workspace, output):
+        options = ["stereo_fusion", "--workspace_path", workspace,
                    "--workspace_format", "COLMAP",
                    "--input_type", "geometric",
-                   "--output_path", output_model]
+                   "--output_path", output]
         self.__call__(options)
 
     def merge_models(self, output, input1, input2):
