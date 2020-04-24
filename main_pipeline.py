@@ -1,117 +1,21 @@
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from wrappers import Colmap, FFMpeg, PDraw, ETH3D, PCLUtil
-from colmap_util.read_model import read_images_text
-from pyproj import Proj
-from edit_exif import get_gps_location
-import meshlab_xml_writer as mxw
-import add_video_to_db as avtd
-import extract_video_from_model as evfm
-from path import Path
-import numpy as np
-import videos_to_colmap as v2c
-import viz_depth as vd
-import generate_sky_masks as gsm
-import pandas as pd
 import las2ply
 import rawpy
 import imageio
-import tempfile
 
-global_steps = ["Point Cloud Preparation",
-                "Pictures preparation",
-                "Extracting Videos and selecting optimal frames for a thorough scan",
-                "First thorough photogrammetry",
-                "Alignment of photogrammetric reconstruction with Lidar point cloud",
-                "Occlusion Mesh computing",
-                "Video localization",
-                "Ground Truth creation"]
+import numpy as np
+import pandas as pd
+from pyproj import Proj
+from edit_exif import get_gps_location
 
-per_vid_steps_1 = ["Full video extraction",
-                   "Sky mask generation",
-                   "Complete photogrammetry with video at 1 fps",
-                   "Localizing remaining frames",
-                   "Re-Alignment of triangulated points with Lidar point cloud"]
-per_vid_steps_2 = ["Creating Ground truth data",
-                   "Create video with GT vizualisation",
-                   "Convert to KITTI format"]
-
-parser = ArgumentParser(description='Main pipeline, from LIDAR pictures and videos to GT depth enabled videos',
-                        formatter_class=ArgumentDefaultsHelpFormatter)
-
-main_parser = parser.add_argument_group("Main options")
-main_parser.add_argument('--input_folder', metavar='PATH', default=Path("."), type=Path,
-                         help="Folder with LAS point cloud, videos, and images")
-main_parser.add_argument('--workspace', metavar='PATH', default=Path("."),
-                         help='path to workspace where COLMAP operations will be done', type=Path)
-main_parser.add_argument('--output_folder', metavar='PATH', default=Path("."),
-                         help='path to output folder : must be big !', type=Path)
-main_parser.add_argument('--skip_step', metavar="N", nargs="*", default=[], type=int)
-main_parser.add_argument('--begin_step', metavar="N", type=int, default=None)
-main_parser.add_argument('--show_steps', action="store_true")
-main_parser.add_argument('-v', '--verbose', action="count", default=0)
-main_parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
-main_parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"])
-main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"])
-main_parser.add_argument('--dense', action="store_true")
-main_parser.add_argument('--fine_sift_features', action="store_true")
-main_parser.add_argument('--triangulate', action="store_true")
-main_parser.add_argument('--save_space', action="store_true")
-main_parser.add_argument('--add_new_videos', action="store_true")
-main_parser.add_argument('--resume_work', action="store_true")
-
-pcp_parser = parser.add_argument_group("PointCLoud preparation")
-pcp_parser.add_argument("--pointcloud_resolution", default=0.1, type=float)
-pcp_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=int)
-
-ve_parser = parser.add_argument_group("Video extractor")
-ve_parser.add_argument('--total_frames', default=500, type=int)
-ve_parser.add_argument('--orientation_weight', default=1, type=float)
-ve_parser.add_argument('--resolution_weight', default=1, type=float)
-ve_parser.add_argument('--num_neighbours', default=10, type=int)
-ve_parser.add_argument('--system', default="epsg:2154")
-ve_parser.add_argument('--lowfps', default=1, type=int)
-ve_parser.add_argument('--max_sequence_length', default=4000, type=int)
-
-exec_parser = parser.add_argument_group("Executable files")
-exec_parser.add_argument('--log', default=None, type=Path)
-exec_parser.add_argument('--nw', default="native-wrapper.sh", type=Path,
-                         help="native-wrapper.sh file location")
-exec_parser.add_argument("--colmap", default="colmap", type=Path,
-                         help="colmap exec file location")
-exec_parser.add_argument("--eth3d", default="../dataset-pipeline/build",
-                         type=Path, help="ETH3D detaset pipeline exec files folder location")
-exec_parser.add_argument("--ffmpeg", default="ffmpeg", type=Path)
-exec_parser.add_argument("--pcl_util", default="pcl_util/build", type=Path)
-
-vr_parser = parser.add_argument_group("Video Registration")
-vr_parser.add_argument("--vocab_tree", type=Path, default="vocab_tree_flickr100K_words256K.bin")
-
-om_parser = parser.add_argument_group("Occlusion Mesh")
-om_parser.add_argument('--normal_radius', default=0.2, type=float)
-om_parser.add_argument('--mesh_resolution', default=0.2, type=float)
-om_parser.add_argument('--splat_threshold', default=0.1, type=float)
+from wrappers import Colmap, FFMpeg, PDraw, ETH3D, PCLUtil
+from cli_utils import set_argparser, print_step, print_workflow
+from video_localization import localize_video, generate_GT
+import meshlab_xml_writer as mxw
+import videos_to_colmap as v2c
+import generate_sky_masks as gsm
 
 
-def print_workflow():
-    print("Global steps :")
-    for i, s in enumerate(global_steps):
-        print("{}:\t{}".format(i, s))
-
-    print("Per video steps :")
-    for i, s in enumerate(per_vid_steps_1):
-        print("\t{}:\t{}".format(i, s))
-    for i, s in enumerate(per_vid_steps_2):
-        print("\t{}:\t{}".format(i, s))
-
-
-def print_step(step_number, step_name):
-        print("\n\n=================")
-        print("Step {}".format(step_number))
-        print(step_name)
-        print("=================")
-
-
-def prepare_point_clouds(pointclouds, lidar_path, verbose, eth3d, pcl_util, SOR, pointcloud_resolution, save_space, **env):
+def prepare_point_clouds(pointclouds, lidar_path, verbose, eth3d, pcl_util, SOR, pointcloud_resolution, **env):
     converted_clouds = []
     output_centroid = None
     for pc in pointclouds:
@@ -122,9 +26,12 @@ def prepare_point_clouds(pointclouds, lidar_path, verbose, eth3d, pcl_util, SOR,
             if output_centroid is None:
                 output_centroid = centroid
         pcl_util.filter_cloud(input_file=ply, output_file=ply.stripext() + "_filtered.ply", knn=SOR[0], std=SOR[1])
-        pcl_util.subsample(input_file=ply.stripext() + "_filtered.ply", output_file=ply.stripext() + "_subsampled.ply", resolution=pointcloud_resolution)
+        # pcl_util.subsample(input_file=ply.stripext() + "_filtered.ply",
+        #                    output_file=ply.stripext() + "_subsampled.ply",
+        #                    resolution=pointcloud_resolution)
 
-        converted_clouds.append(ply.stripext() + "_subsampled.ply")
+        # converted_clouds.append(ply.stripext() + "_subsampled.ply")
+        converted_clouds.append(ply.stripext() + "_filtered.ply")
     temp_mlp = env["workspace"] / "lidar_unaligned.mlp"
     mxw.create_project(temp_mlp, converted_clouds, labels=None, transforms=None)
     if len(converted_clouds) > 1:
@@ -150,7 +57,8 @@ def extract_gps_and_path(existing_pictures, image_path, system, centroid, **env)
     return georef_list
 
 
-def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap, raw_ext, pic_ext, fine_sift_features, **env):
+def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap,
+                                  raw_ext, pic_ext, more_sift_features, **env):
     picture_folder = input_folder / "Pictures"
     picture_folder.merge_tree(image_path)
     raw_files = sum((list(image_path.walkfiles('*{}'.format(ext))) for ext in raw_ext), [])
@@ -161,7 +69,7 @@ def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap, r
             imageio.imsave(raw.stripext() + ".jpg", rgb)
         raw.remove()
     gsm.process_folder(folder_to_process=image_path, image_path=image_path, pic_ext=pic_ext, **env)
-    colmap.extract_features(per_sub_folder=True, fine=fine_sift_features)
+    colmap.extract_features(per_sub_folder=True, more=more_sift_features)
     return sum((list(image_path.walkfiles('*{}'.format(ext))) for ext in pic_ext), [])
 
 
@@ -188,14 +96,15 @@ def check_input_folder(path):
 
 def prepare_workspace(path, env):
     for dirname, key in zip(["Lidar", "Pictures", "Masks",
-                             "Pictures/Videos", "Thorough/0", "Thorough/georef",
+                             "Pictures/Videos", "Thorough/0", "Thorough/georef", "Thorough/georef_full",
                              "Videos_reconstructions"],
                             ["lidar_path", "image_path", "mask_path",
-                             "video_path", "thorough_recon", "georef_recon",
+                             "video_path", "thorough_recon", "georef_recon", "georef_full_recon",
                              "video_recon"]):
-        (path/dirname).makedirs_p()
-        env[key] = path/dirname
+        (path / dirname).makedirs_p()
+        env[key] = path / dirname
 
+    env["thorough_db"] = path / "scan_thorough.db"
     env["video_frame_list_thorough"] = env["image_path"] / "video_frames_for_thorough_scan.txt"
     env["georef_frames_list"] = env["image_path"] / "georef.txt"
 
@@ -211,8 +120,37 @@ def prepare_workspace(path, env):
     env["indexed_vocab_tree"] = env["workspace"] / "vocab_tree_thorough.bin"
 
 
+def prepare_video_workspace(video_name, video_frames_folder, output_folder, video_recon, image_path, **env):
+    video_env = {video_name: video_name,
+                 video_frames_folder: video_frames_folder}
+    relative_path_folder = video_frames_folder.relpath(image_path)
+    video_env["lowfps_db"] = video_frames_folder / "video_low_fps.db"
+    video_env["metadata"] = video_frames_folder / "metadata.csv"
+    video_env["lowfps_image_list_path"] = video_frames_folder / "lowfps.txt"
+    video_env["chunk_image_list_paths"] = video_frames_folder.files("full_chunk_*.txt")
+    video_env["chunk_dbs"] = [video_frames_folder / fp.namebase + ".db" for fp in video_env["chunk_image_list_paths"]]
+    colmap_root = video_recon / relative_path_folder
+    video_env["colmap_models_root"] = colmap_root
+    video_env["full_model"] = colmap_root
+    video_env["lowfps_model"] = colmap_root / "lowfps"
+    num_chunks = len(video_env["chunk_image_list_paths"])
+    video_env["chunk_models"] = [colmap_root / "chunk_{}".format(index) for index in range(num_chunks)]
+    video_env["final_model"] = colmap_root / "final"
+    output = {}
+    output["images_root_folder"] = output_folder / "images"
+    output["video_frames_folder"] = output["images_root_folder"] / relative_path_folder
+    output["viz_folder"] = output_folder / "video" / relative_path_folder
+    output["model_folder"] = output_folder / "models" / relative_path_folder
+    output["final_model"] = output["model_folder"] / "final"
+    output["video_fps"] = pd.read_csv(video_env["metadata"])["framerate"].values[0]
+    video_env["output_env"] = output
+    video_env["already_localized"] = env["resume_work"] and output["images_folder"].isdir()
+    video_env["GT_already_done"] = env["resume_work"] and (output_folder / "groundtruth_depth" / video_name.namebase).isdir()
+    return video_env
+
+
 def main():
-    args = parser.parse_args()
+    args = set_argparser().parse_args()
     env = vars(args)
     if args.show_steps:
         print_workflow()
@@ -221,8 +159,9 @@ def main():
     if args.begin_step is not None:
         args.skip_step += list(range(args.begin_step))
     check_input_folder(args.input_folder)
+    args.workspace = args.workspace.abspath()
     prepare_workspace(args.workspace, env)
-    colmap = Colmap(db=args.workspace/"thorough_scan.db",
+    colmap = Colmap(db=env["thorough_db"],
                     image_path=env["image_path"],
                     mask_path=env["mask_path"],
                     binary=args.colmap,
@@ -233,7 +172,7 @@ def main():
     env["ffmpeg"] = ffmpeg
     pdraw = PDraw(args.nw, quiet=args.verbose < 2, logfile=args.log)
     env["pdraw"] = pdraw
-    eth3d = ETH3D(args.eth3d, env["image_path"], quiet=args.verbose < 1, logfile=args.log)
+    eth3d = ETH3D(args.eth3d, args.output_folder / "Images", quiet=args.verbose < 1, logfile=args.log)
     env["eth3d"] = eth3d
     pcl_util = PCLUtil(args.pcl_util, quiet=args.verbose < 2, logfile=args.log)
     env["pcl_util"] = pcl_util
@@ -270,7 +209,7 @@ def main():
     if i not in args.skip_step:
         print_step(i, "Extracting Videos and selecting optimal frames for a thorough scan")
         existing_georef = extract_gps_and_path(**env)
-        path_lists, env["videos_output_folders"] = extract_videos_to_workspace(fps=args.lowfps, **env)
+        path_lists, env["videos_frames_folders"] = extract_videos_to_workspace(fps=args.lowfps, **env)
         if path_lists is not None:
             with open(env["video_frame_list_thorough"], "w") as f:
                 f.write("\n".join(path_lists["thorough"]["frames"]))
@@ -278,29 +217,32 @@ def main():
                 f.write("\n".join(existing_georef) + "\n")
                 f.write("\n".join(path_lists["thorough"]["georef"]) + "\n")
             for v in env["videos_list"]:
-                video_folder = env["videos_output_folders"][v]
-                with open(video_folder / "to_scan.txt", "w") as f:
+                video_folder = env["videos_frames_folders"][v]
+                with open(video_folder / "lowfps.txt", "w") as f:
                     f.write("\n".join(path_lists[v]["frames_lowfps"]) + "\n")
                 with open(video_folder / "georef.txt", "w") as f:
                     f.write("\n".join(existing_georef) + "\n")
                     f.write("\n".join(path_lists["thorough"]["georef"]) + "\n")
                     f.write("\n".join(path_lists[v]["georef_lowfps"]) + "\n")
                 for j, l in enumerate(path_lists[v]["frames_full"]):
-                    with open(video_folder / "full_{}.txt".format(i), "w") as f:
+                    with open(video_folder / "full_chunk_{}.txt".format(j), "w") as f:
                         f.write("\n".join(l) + "\n")
     else:
-        env["videos_output_folders"] = {}
+        env["videos_frames_folders"] = {}
         by_name = {v.namebase: v for v in env["videos_list"]}
         for folder in env["video_path"].walkdirs():
             video_name = folder.basename()
             if video_name in by_name.keys():
-                env["videos_output_folders"][by_name[video_name]] = folder
+                env["videos_frames_folders"][by_name[video_name]] = folder
+    env["videos_workspaces"] = {}
+    for v, frames_folder in env["videos_frames_folders"].items():
+        env["videos_workspaces"][v] = prepare_video_workspace(v, frames_folder, **env)
 
     i += 1
     if i not in args.skip_step:
         print_step(i, "First thorough photogrammetry")
         gsm.process_folder(folder_to_process=env["video_path"], **env)
-        colmap.extract_features(image_list=env["video_frame_list_thorough"], fine=args.fine_sift_features)
+        colmap.extract_features(image_list=env["video_frame_list_thorough"], more=args.more_sift_features)
         colmap.index_images(vocab_tree_output=env["indexed_vocab_tree"], vocab_tree_input=args.vocab_tree)
         colmap.match()
         colmap.map(output=env["thorough_recon"].parent)
@@ -312,207 +254,82 @@ def main():
         colmap.align_model(output=env["georef_recon"],
                            input=env["thorough_recon"],
                            ref_images=env["georef_frames_list"])
+        env["georef_recon"].merge_tree(env["georef_full_recon"])
         if args.dense:
             print_step("{} (bis)".format(i), "Point cloud densificitation")
-            dense_workspace = env["thorough_recon"]/"dense"
+            dense_workspace = env["thorough_recon"].parent/"dense"
             colmap.undistort(input=env["georef_recon"], output=dense_workspace)
             colmap.dense_stereo(workspace=dense_workspace)
             colmap.stereo_fusion(workspace=dense_workspace, output=env["georefrecon_ply"])
         else:
             colmap.export_model(output=env["georefrecon_ply"],
                                 input=env["georef_recon"])
+    if args.inspect_dataset:
+        georef_mlp = env["georef_recon"]/"georef_recon.mlp"
+        mxw.create_project(georef_mlp, [env["georefrecon_ply"]])
+        colmap.export_model(output=env["georef_recon"],
+                            input=env["georef_recon"],
+                            output_type="TXT")
+        eth3d.inspect_dataset(scan_meshlab=georef_mlp,
+                              colmap_model=env["georef_recon"],
+                              image_path=env["image_path"])
 
     i += 1
     if i not in args.skip_step:
-        print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud "
-                      "(This can e skipped to be done manually with e.g. CloudCompare")
-        pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
-                                         lidar=env["with_normals_path"],
-                                         output_matrix=env["matrix_path"],
-                                         max_distance=10)
+        print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud")
+        if args.registration_method == "simple":
+            pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
+                                             lidar=env["with_normals_path"],
+                                             output_matrix=env["matrix_path"],
+                                             max_distance=10)
+        elif args.registration_method == "eth3d":
+            temp_mlp = env["lidar_mlp"].stripext() + "_registered.mlp"
+            mxw.add_mesh_to_project(env["lidar_mlp"], temp_mlp, env["georefrecon_ply"], index=0)
+            eth3d.align_with_ICP(temp_mlp, temp_mlp, scales=5)
+            mxw.remove_mesh_from_project(temp_mlp, temp_mlp, 0)
+            print(mxw.get_mesh(temp_mlp, index=0)[0])
+            matrix = np.linalg.inv(mxw.get_mesh(temp_mlp, index=0)[0])
+            np.savetxt(env["matrix_path"], matrix)
+
+        elif args.registration_method == "interactive":
+            input("Get transformation matrix and paste it in the file {}. When done, press ENTER".format(env["matrix_path"]))
     if env["matrix_path"].isfile():
-        matrix = np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
+        env["global_registration_matrix"] = np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
     else:
         print("Error, no registration matrix can be found")
-        matrix = np.eye(4)
+        env["global_registration_matrix"] = np.eye(4)
 
-    mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], matrix)
-    mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"]], transforms=[matrix])
-    mxw.create_project(env["splats_mlp"], [env["splats_ply"]], transforms=[matrix])
+    mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
+    mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"]], transforms=[env["global_registration_matrix"]])
+    mxw.create_project(env["splats_mlp"], [env["splats_ply"]], transforms=[env["global_registration_matrix"]])
+
+    if args.inspect_dataset:
+        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
+                              colmap_model=env["georef_recon"],
+                              image_path=env["image_path"])
 
     i += 1
     if i not in args.skip_step:
         print_step(i, "Video localization")
         for j, v in enumerate(env["videos_list"]):
-            print(v)
-            current_video_folder = env["videos_output_folders"][v]
-            thorough_db = args.workspace / "thorough_scan.db"
-            lowfps_db = current_video_folder / "video_low_fps.db"
-            current_metadata = current_video_folder / "metadata.csv"
-            map_image_list_path = current_video_folder / "to_scan.txt"
-            full_image_list_path = current_video_folder.files("full*.txt")
-            full_dbs = [current_video_folder / fp.namebase + ".db" for fp in full_image_list_path]
-            video_output_model = env["video_recon"] / v.namebase
-            chunk_output_models = [video_output_model / "chunk_{}".format(index) for index in range(len(full_image_list_path))]
-            final_output_model = video_output_model / "final"
-            # Perform checks if it has not already been computed
-            if args.resume_work and final_output_model.isdir():
-                print("already done")
-                continue
-
-            i_pv = 1
             print("\n\nNow working on video {} [{}/{}]".format(v, j + 1, len(env["videos_list"])))
-            thorough_db.copy(lowfps_db)
-            colmap.db = lowfps_db
+            video_env = env["videos_workspaces"][v]
+            localize_video(video_name=v,
+                           video_frames_folder=env["videos_frames_folders"][v],
+                           video_index=j+1,
+                           num_videos=len(env["videos_list"]),
+                           **video_env, **env)
 
-            print_step(i_pv, "Full video extraction")
-            if args.save_space:
-                existing_images = list(current_video_folder.files())
-                ffmpeg.extract_images(v, current_video_folder)
-            else:
-                print("Already Done.")
+    i += 1
+    if i not in args.skip_step:
+        print_step(i, "Groud Truth generation")
+        for j, v in enumerate(env["videos_list"]):
+            video_env = env["videos_workspaces"][v]
 
-            i_pv += 1
-            print_step(i_pv, "Sky mask generation")
-            gsm.process_folder(folder_to_process=current_video_folder, **env)
-
-            i_pv += 1
-            print_step(i_pv, "Complete photogrammetry with video at {} fps".format(args.lowfps))
-            avtd.add_to_db(lowfps_db, current_metadata, map_image_list_path)
-            colmap.extract_features(image_list=map_image_list_path, fine=args.fine_sift_features)
-            colmap.match(method="sequential", vocab_tree=env["indexed_vocab_tree"])
-            video_output_model.makedirs_p()
-            colmap.map(output=video_output_model, input=env["georef_recon"])
-            # when colmap map is called, the model is normalized so we have georegister it again
-            colmap.align_model(output=video_output_model,
-                               input=video_output_model,
-                               ref_images=env["georef_frames_list"])
-
-            i_pv += 1
-            print_step(i_pv, "Localizing remaining frames")
-            # get image_ids in a fake database with all the chunks
-            frame_ids_per_chunk = []
-            temp_db = Path(tempfile.NamedTemporaryFile().name)
-            lowfps_db.copy(temp_db)
-            for list_path in full_image_list_path:
-                frame_ids_per_chunk.append(avtd.add_to_db(temp_db, current_metadata, frame_list_path=list_path))
-
-            for k, (list_path, full_db, chunk_output_model, frame_ids) in enumerate(zip(full_image_list_path,
-                                                                                        full_dbs,
-                                                                                        chunk_output_models,
-                                                                                        frame_ids_per_chunk)):
-                print("\n\nLocalizing Chunk {}/{}".format(k + 1, len(full_dbs)))
-                chunk_output_model.makedirs_p()
-                lowfps_db.copy(full_db)
-                colmap.db = full_db
-                print("Adding chunk images to database")
-                avtd.add_to_db(full_db, current_metadata, frame_list_path=list_path, input_frame_ids=frame_ids)
-                colmap.extract_features(image_list=list_path, fine=args.fine_sift_features)
-                colmap.match(method="sequential", vocab_tree=env["indexed_vocab_tree"])
-                colmap.register_images(output=chunk_output_model, input=video_output_model)
-                colmap.adjust_bundle(output=chunk_output_model, input=chunk_output_model)
-            for chunk in chunk_output_models:
-                colmap.merge_models(output=video_output_model, input1=video_output_model, input2=chunk)
-            final_output_model.makedirs_p()
-            empty = not evfm.extract_video(input=video_output_model,
-                                           output=final_output_model,
-                                           video_metadata_path=current_metadata,
-                                           output_format=".bin" if args.triangulate else ".txt")
-
-            if empty:
-                print("Error, empty localization, will try map from video")
-                continue
-                # colmap.db = lowfps_db
-                # colmap.map(output_model=video_output_model, start_frame_id=added_frames[int(len(added_frames)/2)])
-                # colmap.align_model(output_model=video_output_model,
-                #                    input_model=video_output_model / "0",
-                #                    ref_images=current_video_folder / "georef.txt")
-                # colmap.db = full_db
-                # colmap.register_images(output_model=video_output_model, input_model=video_output_model)
-                # colmap.adjust_bundle(output_model=video_output_model, input_model=video_output_model)
-                # empty = not evfm.extract_video(input_model=video_output_model,
-                #                                output_model=final_output_model,
-                #                                video_metadata_path=current_metadata,
-                #                                output_format=".txt")
-                # if empty:
-                #     print("Error could not map anything, aborting this video")
-                #     continue
-
-            if args.triangulate:
-                i_pv += 1
-                print_step(i, "Re-Alignment of triangulated points with Lidar point cloud")
-
-                colmap.triangulate_points(final_output_model, final_output_model)
-                colmap.export_model(final_output_model, final_output_model, output_type="TXT")
-                ply_name = final_output_model / "georef_{}.ply".format(v.namebase)
-                matrix_name = final_output_model / "georef_maxtrix_{}.txt".format(v.namebase)
-                colmap.export_model(ply_name, final_output_model, output_type="PLY")
-                pcl_util.register_reconstruction(georef=ply_name, lidar=env["lidar_ply"],
-                                                 output_matrix=matrix_name, output_cloud=env["lidar_ply"],
-                                                 max_distance=10)
-                matrix = np.fromfile(matrix_name, sep=" ").reshape(4, 4)
-
-            output_images_folder = args.output_folder / "Images" / v.namebase
-            output_images_folder.makedirs_p()
-            current_video_folder.merge_tree(output_images_folder)
-
-            if args.save_space:
-                for file in current_video_folder.files():
-                    if file not in existing_images:
-                        file.remove()
-
-    for j, v in enumerate(env["videos_list"]):
-        output_images_folder = args.output_folder / "Images" / v.namebase
-        current_video_folder = env["videos_output_folders"][v]
-        current_metadata = current_video_folder / "metadata.csv"
-        video_output_model = env["video_recon"] / v.namebase
-        final_output_model = video_output_model / "final"
-        model_length = len(read_images_text(final_output_model / "images.txt"))
-        if model_length < 2:
-            continue
-
-        final_lidar = final_output_model / "aligned_lidar.mlp"
-        final_occlusions = final_output_model / "occlusions.mlp"
-        final_splats = final_output_model / "splats.mlp"
-        specific_matrix_path = final_output_model / "matrix.txt"
-        if specific_matrix_path.isfile():
-            current_matrix = np.linalg.inv(np.fromfile(specific_matrix_path, sep=" ").reshape(4, 4))
-        else:
-            current_matrix = matrix
-
-        mxw.apply_transform_to_project(env["lidar_mlp"], final_lidar, current_matrix)
-        mxw.create_project(final_occlusions, [env["occlusion_ply"]], transforms=[current_matrix])
-        mxw.create_project(final_splats, [env["splats_ply"]], transforms=[current_matrix])
-        output_vizualisation_folder = args.output_folder / "video" / v.namebase
-
-        if args.resume_work and output_vizualisation_folder.isdir():
-            continue
-
-        print("Creating GT on video {} [{}/{}]".format(v, j+1, len(env["videos_list"])))
-        i_pv = 0
-
-        i_pv += 1
-        print_step(i, "Creating Ground truth data with ETH3D")
-
-        # eth3d.create_ground_truth(final_lidar, final_occlusions,
-        #                           final_splats, final_output_model,
-        #                           args.output_folder)
-        eth3d.create_ground_truth(env["aligned_mlp"], env["occlusion_mlp"],
-                                  env["splats_mlp"], final_output_model,
-                                  args.output_folder)
-        output_vizualisation_folder.makedirs_p()
-
-        i_pv += 1
-        print_step(i_pv, "Create video with GT vizualisation")
-
-        fps = pd.read_csv(current_metadata)["framerate"].iloc[0]
-        vd.process_viz(args.output_folder / "ground_truth_depth" / v.namebase,
-                       output_images_folder,
-                       args.output_folder / "occlusion_depth" / v.namebase,
-                       output_vizualisation_folder,
-                       video=True, fps=fps, downscale=4, threads=8, **env)
-        i_pv += 1
-        print_step(i_pv, "Convert to KITTI format")
+            generate_GT(video_name=v, GT_already_done=video_env["GT_already_done"],
+                        video_index=j+1,
+                        num_videos=len(env["videos_list"]),
+                        **video_env["output_env"], **env)
 
 
 if __name__ == '__main__':

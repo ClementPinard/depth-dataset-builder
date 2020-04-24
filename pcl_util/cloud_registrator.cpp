@@ -6,6 +6,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/registration/transformation_estimation_svd_scale.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/features/normal_3d.h>
 #include <pcl/io/ply_io.h>
 
 
@@ -45,44 +46,60 @@ int main (int argc, char** argv)
   
   // Load point cloud with normals.
   LOG(INFO) << "Loading point clouds ...";
-  pcl::PointCloud<pcl::PointXYZ>::Ptr geroef(
+  pcl::PointCloud<pcl::PointXYZ>::Ptr georef(
       new pcl::PointCloud<pcl::PointXYZ>());
-  if (pcl::io::loadPLYFile(georef_path, *geroef) < 0) {
+  if (pcl::io::loadPLYFile(georef_path, *georef) < 0) {
     return EXIT_FAILURE;
   }
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr lidar(
-      new pcl::PointCloud<pcl::PointXYZ>());
+  pcl::PointCloud<pcl::PointNormal>::Ptr lidar(
+      new pcl::PointCloud<pcl::PointNormal>());
   if (pcl::io::loadPLYFile(lidar_path, *lidar) < 0) {
     return EXIT_FAILURE;
   }
+
   LOG(INFO) << "point clouds loaded...";
 
   // Filter to get inlier cloud, store in filtered_cloud.
-  pcl::PointCloud<pcl::PointXYZ>::Ptr geroef_filtered (new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-  sor.setInputCloud(geroef);
-  sor.setMeanK(6);
-  sor.setStddevMulThresh(0.1);
-  sor.filter(*geroef_filtered);
+  //pcl::PointCloud<pcl::PointXYZ>::Ptr geroef_filtered (new pcl::PointCloud<pcl::PointXYZ>);
+  //pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+  //sor.setInputCloud(geroef);
+  //sor.setMeanK(6);
+  //sor.setStddevMulThresh(0.1);
+  //sor.filter(*geroef_filtered);
 
-  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-  pcl::registration::TransformationEstimationSVDScale<pcl::PointXYZ, pcl::PointXYZ>::Ptr est;
-  est.reset(new pcl::registration::TransformationEstimationSVDScale<pcl::PointXYZ, pcl::PointXYZ>);
+
+  // Normal estimation*
+  pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+  pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (georef);
+  n.setInputCloud (georef);
+  n.setSearchMethod (tree);
+  n.setKSearch (6);
+  n.compute (*normals);
+  pcl::PointCloud<pcl::PointNormal>::Ptr geroef_normals (new pcl::PointCloud<pcl::PointNormal>);
+  pcl::concatenateFields (*georef, *normals, *geroef_normals);
+
+  // pcl::io::savePLYFile("test_normals.ply", *geroef_normals);
+
+  pcl::IterativeClosestPointWithNormals<pcl::PointNormal, pcl::PointNormal> icp;
+  pcl::registration::TransformationEstimationSVDScale<pcl::PointNormal, pcl::PointNormal>::Ptr est;
+  est.reset(new pcl::registration::TransformationEstimationSVDScale<pcl::PointNormal, pcl::PointNormal>);
   icp.setTransformationEstimation(est);
 
   icp.setMaxCorrespondenceDistance (max_distance);
   icp.setTransformationEpsilon(0.0001);
   icp.setMaximumIterations(500);
   icp.setEuclideanFitnessEpsilon(0.0001);
-  icp.setInputSource(geroef_filtered);
+  icp.setInputSource(geroef_normals);
   icp.setInputTarget(lidar);
   
-  pcl::PointCloud<pcl::PointXYZ> Final;
+  pcl::PointCloud<pcl::PointNormal> Final;
   icp.align(Final);
-  Eigen::Matrix4f transform = icp.getFinalTransformation().inverse();
-  pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_aligned(
-      new pcl::PointCloud<pcl::PointXYZ>());
+  Eigen::Matrix4f transform = icp.getFinalTransformation();
+  pcl::PointCloud<pcl::PointNormal>::Ptr lidar_aligned(
+      new pcl::PointCloud<pcl::PointNormal>());
   pcl::transformPointCloud (*lidar, *lidar_aligned, transform);
   
   std::ofstream output_file;

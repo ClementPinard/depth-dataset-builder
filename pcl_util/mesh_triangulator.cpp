@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
   
   std::string point_normal_cloud_path;
   pcl::console::parse_argument(argc, argv, "--point_normal_cloud_path", point_normal_cloud_path);
-  float resolution = 20; //20cm resolution
+  float resolution = 0.2; //20cm resolution
   pcl::console::parse_argument(argc, argv, "--resolution", resolution);
   std::string mesh_output;
   pcl::console::parse_argument(argc, argv, "--out_mesh", mesh_output);

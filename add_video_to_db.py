@@ -16,7 +16,7 @@ parser.add_argument('--database', metavar='DB', required=True,
                     help='path to colmap database file, to get the image ids right')
 
 
-def add_to_db(db_path, metadata_path, frame_list_path, input_frame_ids=None, **env):
+def add_to_db(db_path, metadata_path, frame_list_path, **env):
     metadata = pd.read_csv(metadata_path)
     database = db.COLMAPDatabase.connect(db_path)
 
@@ -26,9 +26,6 @@ def add_to_db(db_path, metadata_path, frame_list_path, input_frame_ids=None, **e
         with open(frame_list_path, "r") as f:
             frame_list = [line[:-1] for line in f.readlines()]
         metadata = metadata[metadata["image_path"].isin(frame_list)]
-    if input_frame_ids:
-        assert(len(metadata) == len(input_frame_ids))
-        metadata["input_frame_id"] = input_frame_ids
 
     for _, row in tqdm(metadata.iterrows(), total=len(metadata)):
         image_path = row["image_path"]
@@ -38,8 +35,7 @@ def add_to_db(db_path, metadata_path, frame_list_path, input_frame_ids=None, **e
         else:
             frame_gps = np.full(3, np.NaN)
         try:
-            input_id = row["input_frame_id"] if input_frame_ids else None
-            frame_ids.append(database.add_image(image_path, int(camera_id), prior_t=frame_gps, image_id=input_id))
+            frame_ids.append(database.add_image(image_path, int(camera_id), prior_t=frame_gps, image_id=row["db_id"]))
         except IntegrityError:
             sql_string = "SELECT camera_id, image_id FROM images WHERE name='{}'".format(image_path)
             sql_output = next(database.execute(sql_string))

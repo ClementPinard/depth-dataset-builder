@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from pyproj import Proj
 from tqdm import tqdm
+import tempfile
 
 parser = ArgumentParser(description='Take all the drone videos of a folder and put the frame '
                                     'location in a COLMAP file for vizualisation',
@@ -29,7 +30,7 @@ parser.add_argument('--nw', default='',
                     help="native-wrapper.sh file location")
 parser.add_argument('--fps', default=1, type=int,
                     help="framerate at which videos will be scanned WITH reconstruction")
-parser.add_argument('--num_frames', default=200, type=int)
+parser.add_argument('--total_frames', default=200, type=int)
 parser.add_argument('--orientation_weight', default=1, type=float)
 parser.add_argument('--resolution_weight', default=1, type=float)
 parser.add_argument('--num_neighbours', default=10, type=int)
@@ -120,7 +121,7 @@ def register_new_cameras(cameras_dataframe, database, camera_dict, model_name="P
 
 
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
-                         workspace, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
+                         thorough_db, workspace, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
                          output_colmap_format="bin", save_space=False, max_sequence_length=1000, **env):
     proj = Proj(system)
     indoor_videos = []
@@ -128,9 +129,9 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     video_output_folders = {}
     images = {}
     colmap_cameras = {}
-    database_filepath = workspace/"thorough_scan.db"
+    tempfile_database = Path(tempfile.NamedTemporaryFile().name)
     path_lists_output = {}
-    database = db.COLMAPDatabase.connect(database_filepath)
+    database = db.COLMAPDatabase.connect(thorough_db)
     database.create_tables()
     to_extract = total_frames - len(existing_pictures)
 
@@ -178,14 +179,21 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
 
     print("Constructing COLMAP model with {:,} frames".format(len(final_metadata[final_metadata["sampled"]])))
 
+    database.commit()
+    thorough_db.copy(tempfile_database)
+    temp_database = db.COLMAPDatabase.connect(tempfile_database)
+
     final_metadata["image_path"] = ""
-    for image_id, row in tqdm(final_metadata.iterrows(), total=len(final_metadata)):
+    final_metadata["db_id"] = -1
+    for current_id, row in tqdm(final_metadata.iterrows(), total=len(final_metadata)):
         video = row["video"]
         frame = row["frame"]
         camera_id = row["camera_id"]
         current_image_path = video_output_folders[video].relpath(image_path) / video.namebase + "_{:05d}.jpg".format(frame)
 
-        final_metadata.at[image_id, "image_path"] = current_image_path
+        final_metadata.at[current_id, "image_path"] = current_image_path
+        db_image_id = temp_database.add_image(current_image_path, int(camera_id))
+        final_metadata.at[current_id, "db_id"] = db_image_id
 
         if row["sampled"]:
             frame_qvec = row[["frame_quat_w",
@@ -200,14 +208,15 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                 frame_gps = np.full(3, np.NaN)
 
             world_qvec, world_tvec = world_coord_from_frame(frame_qvec, frame_tvec)
-            db_image_id = database.add_image(current_image_path, int(camera_id), prior_t=frame_gps)
-            images[db_image_id] = rm.Image(
-                id=db_image_id, qvec=world_qvec, tvec=world_tvec,
-                camera_id=camera_id, name=current_image_path,
-                xys=[], point3D_ids=[])
+            database.add_image(current_image_path, int(camera_id), prior_t=frame_gps, image_id=db_image_id)
+            images[db_image_id] = rm.Image(id=db_image_id, qvec=world_qvec, tvec=world_tvec,
+                                           camera_id=camera_id, name=current_image_path,
+                                           xys=[], point3D_ids=[])
 
     database.commit()
     database.close()
+    temp_database.commit()
+    temp_database.close()
     rm.write_model(colmap_cameras, images, {}, output_video_folder, "." + output_colmap_format)
     print("COLMAP model created")
 

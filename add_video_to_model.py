@@ -1,5 +1,5 @@
-from colmap import read_model as rm
-from colmap.database import COLMAPDatabase
+from colmap_util import read_model as rm
+from colmap_util.database import COLMAPDatabase
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
 import pandas as pd

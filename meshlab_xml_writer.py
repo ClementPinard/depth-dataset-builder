@@ -28,9 +28,40 @@ def create_project(mlp_path, model_paths, labels=None, transforms=None):
 def remove_mesh_from_project(input_mlp, output_mlp, index):
     with open(input_mlp, "r") as f:
         to_modify = etree.parse(f)
+    meshgroup = to_modify.getroot()[0]
+    if index < len(meshgroup):
+        removed = meshgroup[index]
+        meshgroup.remove(removed)
+    to_modify.write(output_mlp, pretty_print=True)
+    transform = np.fromstring(removed[0].text, sep=" ").reshape(4, 4)
+    filepath = removed.get("label")
+    return transform, filepath
+
+
+def get_mesh(input_mlp, index):
+    with open(input_mlp, "r") as f:
+        to_modify = etree.parse(f)
+    meshgroup = to_modify.getroot()[0]
+    if index < len(meshgroup):
+        removed = meshgroup[index]
+    transform = np.fromstring(removed[0].text, sep=" ").reshape(4, 4)
+    filepath = removed.get("label")
+    return transform, filepath
+
+
+def add_mesh_to_project(input_mlp, output_mlp, model_path, index=0, label=None, transform=np.eye(4)):
+    with open(input_mlp, "r") as f:
+        to_modify = etree.parse(f)
+    if label is None:
+        label = model_path.basename()
     root = to_modify.getroot()
-    if index < len(root[0][0]):
-        root[0].remove(root[0][index])
+    group = root[0]
+    mesh = etree.Element("MLMesh")
+    mesh.set("label", label)
+    mesh.set("filename", model_path)
+    matrix = etree.SubElement(mesh, "MLMatrix44")
+    matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in transform) + "\n"
+    group.insert(index, mesh)
     to_modify.write(output_mlp, pretty_print=True)
 
 
@@ -50,5 +81,7 @@ if __name__ == '__main__':
     labels = "1", "2"
     transforms = [np.random.randn(4, 4), np.random.randn(4, 4)]
     create_project("test.mlp", model_paths)
+    add_mesh_to_project("test.mlp", "test.mlp", model_paths[0], index=0)
 
-    remove_mesh_from_project("test.mlp", "test2.mlp", 0)
+    matrix, filename = remove_mesh_from_project("test.mlp", "test2.mlp", 0)
+    print(matrix, filename)

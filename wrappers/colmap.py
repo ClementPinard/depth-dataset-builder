@@ -10,7 +10,7 @@ class Colmap(Wrapper):
         self.image_path = image_path
         self.mask_path = mask_path
 
-    def extract_features(self, per_sub_folder=False, image_list=None, model="RADIAL", fine=False):
+    def extract_features(self, per_sub_folder=False, image_list=None, model="RADIAL", more=False):
         options = ["feature_extractor", "--database_path", self.db,
                    "--image_path", self.image_path, "--ImageReader.mask_path", self.mask_path,
                    "--ImageReader.camera_model", model]
@@ -18,9 +18,13 @@ class Colmap(Wrapper):
             options += ["--ImageReader.single_camera_per_folder", "1"]
         if image_list is not None:
             options += ["--image_list_path", image_list]
-        if fine:
+        if more:
             options += ["--SiftExtraction.domain_size_pooling", "1",
                         "--SiftExtraction.estimate_affine_shape", "1"]
+        else:
+            # See issue  https://github.com/colmap/colmap/issues/627
+            # If COLMAP is updated to work better on newest driver, this should be removed
+            options += ["--SiftExtraction.use_gpu", "0"]
         self.__call__(options)
 
     def match(self, method="exhaustive", guided_matching=True, vocab_tree=None):

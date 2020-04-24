@@ -122,7 +122,7 @@ def process_viz(depth_dir, img_dir, occ_dir, output_dir, video, fps, downscale, 
                 raise e
 
     if video:
-        video_path = str(output_dir/'video.mp4')
+        video_path = str(output_dir/'{}_groundtruth_viz.mp4'.format(output_dir.namebase))
         glob_pattern = str(output_dir/'*.png')
         ffmpeg.create_video(video_path, glob_pattern, fps)
 

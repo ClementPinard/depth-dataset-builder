@@ -38,21 +38,25 @@ class ETH3D(Wrapper):
                    "--distance_threshold", str(threshold)]
         self.__call__(options)
 
-    def create_ground_truth(self, scan_meshlab, occlusion_ply, splats_ply, colmap_model, output_folder,
+    def create_ground_truth(self, scan_meshlab, colmap_model, output_folder, occlusions=None, splats=None,
                             point_cloud=True, depth_maps=True, occlusion_maps=True):
         options = ["GroundTruthCreator", "--scan_alignment_path", scan_meshlab,
                    "--image_base_path", self.image_path, "--state_path", colmap_model,
-                   "--output_folder_path", output_folder, "--occlusion_mesh_path", occlusion_ply,
-                   "--occlusion_splats_path", splats_ply,
+                   "--output_folder_path", output_folder, "--occlusion_mesh_path", occlusions,
+                   "--occlusion_splats_path", splats,
                    "--write_point_cloud", "1" if point_cloud else "0",
                    "--write_depth_maps", "1" if depth_maps else "0",
                    "--write_occlusion_depth", "1" if occlusion_maps else "0",
                    "--compress_depth_maps", "1"]
         self.__call__(options)
 
-    def inspect_dataset(self, scan_meshlab, occlusion_meshlab, colmap_model, output_folder,
-                        point_cloud=True, depth_maps=True, occlusion_maps=True):
+    def inspect_dataset(self, scan_meshlab, colmap_model, image_path=None, occlusions=None, splats=None):
+        if image_path is None:
+            image_path = self.image_path
         options = ["DatasetInspector", "--scan_alignment_path", scan_meshlab,
-                   "--image_base_path", self.image_path, "--state_path", colmap_model,
-                   "--occlusion_mesh_paths", occlusion_meshlab]
+                   "--image_base_path", image_path, "--state_path", colmap_model]
+        if occlusions is not None:
+            options += ["--occlusion_mesh_path", occlusions]
+        if splats is not None:
+            options += ["--occlusion_splats_path", splats]
         self.__call__(options)
