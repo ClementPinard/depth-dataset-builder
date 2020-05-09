@@ -4,8 +4,8 @@ from .default_wrapper import Wrapper
 class Colmap(Wrapper):
     """docstring for Colmap"""
 
-    def __init__(self, db, image_path, mask_path, binary="colmap", logfile=None, quiet=False):
-        super().__init__(binary, quiet, logfile)
+    def __init__(self, db, image_path, mask_path, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.db = db
         self.image_path = image_path
         self.mask_path = mask_path
@@ -24,7 +24,8 @@ class Colmap(Wrapper):
         else:
             # See issue  https://github.com/colmap/colmap/issues/627
             # If COLMAP is updated to work better on newest driver, this should be removed
-            options += ["--SiftExtraction.use_gpu", "0"]
+            # options += ["--SiftExtraction.use_gpu", "0"]
+            pass
         self.__call__(options)
 
     def match(self, method="exhaustive", guided_matching=True, vocab_tree=None):

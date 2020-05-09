@@ -4,9 +4,8 @@ import json
 
 
 class FFMpeg(Wrapper):
-    def __init__(self, binary="ffmpeg", probe="ffprobe", logfile=None, quiet=False):
-        super().__init__(binary, quiet, logfile)
-        self.binary = binary
+    def __init__(self, binary="ffmpeg", probe="ffprobe", *args, **kwargs):
+        super().__init__(binary, *args, **kwargs)
         self.probe = probe
 
     def extract_images(self, video_file, output_folder, fps=None):
@@ -15,8 +14,8 @@ class FFMpeg(Wrapper):
         else:
             fps_arg = []
 
-        self.__call__(["-y", "-i", str(video_file), "-vsync", "0", "-qscale:v", "2"] +
-                      fps_arg + [str(output_folder / output_folder.namebase + "_%05d.jpg")])
+        self.__call__(["-y", "-i", str(video_file), "-vsync", "0", "-qscale:v", "2"]
+                      + fps_arg + [str(output_folder / output_folder.namebase + "_%05d.jpg")])
         return sorted(output_folder.files("*.jpg"))
 
     def extract_specific_frames(self, video_file, output_folder, frame_ids):
@@ -31,6 +30,9 @@ class FFMpeg(Wrapper):
                           "-qscale:v", "2", frame_string]
         self.__call__(ffmpeg_options)
         frame_files = sorted(output_folder.files(video_file.namebase + "tmp_*.jpg"))
+        assert(len(frame_files) == len(frame_ids)), \
+            "error, got {} frame_ids, but got {} images extracted".format(len(frame_ids), len(frame_files))
+
         for f, frame_id in zip(frame_files, frame_ids):
             f.rename(f.parent / (video_file.namebase + "_{:05d}.jpg".format(frame_id)))
         return sorted(output_folder.files("*.jpg"))

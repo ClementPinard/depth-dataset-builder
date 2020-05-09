@@ -21,7 +21,6 @@ parser.add_argument('--video_folder', metavar='DIR',
 parser.add_argument('--system', default='epsg:2154')
 parser.add_argument('--centroid_path', default=None)
 parser.add_argument('--output_folder', metavar='DIR', type=Path)
-parser.add_argument('--workspace', metavar='DIR', type=Path)
 parser.add_argument('--image_path', metavar='DIR', type=Path)
 parser.add_argument('--output_format', metavar='EXT', default="bin")
 parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
@@ -33,8 +32,9 @@ parser.add_argument('--fps', default=1, type=int,
 parser.add_argument('--total_frames', default=200, type=int)
 parser.add_argument('--orientation_weight', default=1, type=float)
 parser.add_argument('--resolution_weight', default=1, type=float)
-parser.add_argument('--num_neighbours', default=10, type=int)
 parser.add_argument('--save_space', action="store_true")
+parser.add_argument('--thorough_db', type=Path)
+parser.add_argument('-v', '--verbose', action="count", default=0)
 
 
 def world_coord_from_frame(frame_qvec, frame_tvec):
@@ -121,7 +121,7 @@ def register_new_cameras(cameras_dataframe, database, camera_dict, model_name="P
 
 
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
-                         thorough_db, workspace, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
+                         thorough_db, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
                          output_colmap_format="bin", save_space=False, max_sequence_length=1000, **env):
     proj = Proj(system)
     indoor_videos = []
@@ -130,6 +130,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     images = {}
     colmap_cameras = {}
     tempfile_database = Path(tempfile.NamedTemporaryFile().name)
+    if thorough_db.isfile():
+        thorough_db.copy(thorough_db.stripext() + "_backup.db")
     path_lists_output = {}
     database = db.COLMAPDatabase.connect(thorough_db)
     database.create_tables()
@@ -238,9 +240,11 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         path_lists_output[v]["frames_lowfps"] = frame_paths
         path_lists_output[v]["georef_lowfps"] = georef
         num_chunks = len(video_metadata) // max_sequence_length + 1
-        path_lists_output[v]["frames_full"] = [list(frames) for frames in np.array_split(video_metadata["image_path"], num_chunks)]
+        path_lists_output[v]["frames_full"] = [list(frames) for frames in np.array_split(video_metadata["image_path"],
+                                                                                         num_chunks)]
         if save_space:
-            frame_ids = list(video_metadata[video_metadata["sampled"]]["frame"].values)
+            frame_ids = set(video_metadata[video_metadata["sampled"]]["frame"].values) | \
+                set(video_metadata_1fps["frame"].values)
             if len(frame_ids) > 0:
                 extracted_frames = env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
         else:
@@ -254,14 +258,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
     env["videos_list"] = sum((list(args.video_folder.walkfiles('*{}'.format(ext))) for ext in args.vid_ext), [])
-    args.workspace.makedirs_p()
     output_video_folder = args.output_folder / "Videos"
     output_video_folder.makedirs_p()
     env["image_path"] = args.output_folder
     env["output_video_folder"] = output_video_folder
     env["existing_pictures"] = sum((list(args.output_folder.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
-    env["pdraw"] = PDraw(args.nw, quiet=True)
-    env["ffmpeg"] = FFMpeg(quiet=True)
+    env["pdraw"] = PDraw(args.nw, verbose=args.verbose)
+    env["ffmpeg"] = FFMpeg(verbose=args.verbose)
+    env["output_colmap_format"] = args.output_format
 
     if args.centroid_path is not None:
         centroid = np.loadtxt(args.centroid_path)
@@ -272,9 +276,16 @@ if __name__ == '__main__':
 
     if lists is not None:
         with open(args.output_folder/"video_frames_for_thorough_scan.txt", "w") as f:
-            f.write("\n".join(lists["thorough"]))
+            f.write("\n".join(lists["thorough"]["frames"]))
         with open(args.output_folder/"georef.txt", "w") as f:
-            f.write("\n".join(lists["georef"]))
+            f.write("\n".join(lists["thorough"]["georef"]))
         for v in env["videos_list"]:
-            with open(extracted_video_folders[v] / "to_scan.txt", "w") as f:
-                f.write("\n".join(lists[v]))
+            video_folder = extracted_video_folders[v]
+            with open(video_folder / "lowfps.txt", "w") as f:
+                f.write("\n".join(lists[v]["frames_lowfps"]) + "\n")
+            with open(video_folder / "georef.txt", "w") as f:
+                f.write("\n".join(lists["thorough"]["georef"]) + "\n")
+                f.write("\n".join(lists[v]["georef_lowfps"]) + "\n")
+            for j, l in enumerate(lists[v]["frames_full"]):
+                with open(video_folder / "full_chunk_{}.txt".format(j), "w") as f:
+                    f.write("\n".join(l) + "\n")

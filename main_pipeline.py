@@ -144,7 +144,7 @@ def prepare_video_workspace(video_name, video_frames_folder, output_folder, vide
     output["final_model"] = output["model_folder"] / "final"
     output["video_fps"] = pd.read_csv(video_env["metadata"])["framerate"].values[0]
     video_env["output_env"] = output
-    video_env["already_localized"] = env["resume_work"] and output["images_folder"].isdir()
+    video_env["already_localized"] = env["resume_work"] and output["model_folder"].isdir()
     video_env["GT_already_done"] = env["resume_work"] and (output_folder / "groundtruth_depth" / video_name.namebase).isdir()
     return video_env
 
@@ -165,16 +165,16 @@ def main():
                     image_path=env["image_path"],
                     mask_path=env["mask_path"],
                     binary=args.colmap,
-                    quiet=args.verbose < 1,
+                    verbose=args.verbose,
                     logfile=args.log)
     env["colmap"] = colmap
-    ffmpeg = FFMpeg(args.ffmpeg, quiet=args.verbose < 2, logfile=args.log)
+    ffmpeg = FFMpeg(args.ffmpeg, verbose=args.verbose, logfile=args.log)
     env["ffmpeg"] = ffmpeg
-    pdraw = PDraw(args.nw, quiet=args.verbose < 2, logfile=args.log)
+    pdraw = PDraw(args.nw, verbose=args.verbose, logfile=args.log)
     env["pdraw"] = pdraw
-    eth3d = ETH3D(args.eth3d, args.output_folder / "Images", quiet=args.verbose < 1, logfile=args.log)
+    eth3d = ETH3D(args.eth3d, args.output_folder / "Images", verbose=args.verbose, logfile=args.log)
     env["eth3d"] = eth3d
-    pcl_util = PCLUtil(args.pcl_util, quiet=args.verbose < 2, logfile=args.log)
+    pcl_util = PCLUtil(args.pcl_util, verbose=args.verbose, logfile=args.log)
     env["pcl_util"] = pcl_util
 
     las_files = (args.input_folder/"Lidar").files("*.las")

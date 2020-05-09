@@ -6,8 +6,6 @@ import pandas as pd
 parser = ArgumentParser(description='create a new colmap model with only the frames of selected video',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--video_list', metavar='PATH',
-                    help='path to list with relative path to images', type=Path)
 parser.add_argument('--input_model', metavar='DIR', type=Path)
 parser.add_argument('--output_model', metavar='DIR', default=None, type=Path)
 parser.add_argument('--output_format', choices=['.txt', '.bin'], default='.txt')
@@ -22,9 +20,7 @@ def extract_video(input, output, video_metadata_path, output_format='.bin'):
     image_names = video_metadata["image_path"].values
     for id, image in images.items():
         if image.name in image_names:
-            image._replace(xys=[])
-            image._replace(point3D_ids=[])
-            images_per_name[image.name] = image
+            images_per_name[image.name] = image._replace(xys=[], point3D_ids=[])
     camera_ids = video_metadata["camera_id"].unique()
     output_cameras = {cid: cameras[cid] for cid in camera_ids if cid in cameras.keys()}
 

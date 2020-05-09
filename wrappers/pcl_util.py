@@ -3,8 +3,8 @@ from .default_wrapper import Wrapper
 
 class PCLUtil(Wrapper):
 
-    def __init__(self, build_folder, logfile=None, quiet=False):
-        super().__init__(None, quiet, logfile)
+    def __init__(self, build_folder, *args, **kwargs):
+        super().__init__(None, *args, **kwargs)
         self.build_folder = build_folder
 
     def __call__(self, options):

@@ -4,8 +4,8 @@ from .default_wrapper import Wrapper
 class ETH3D(Wrapper):
     """docstring for Colmap"""
 
-    def __init__(self, build_folder, image_path, logfile=None, quiet=False):
-        super().__init__(None, quiet, logfile)
+    def __init__(self, build_folder, image_path, *args, **kwargs):
+        super().__init__(None, *args, **kwargs)
         self.build_folder = build_folder
         self.image_path = image_path
 
@@ -50,7 +50,7 @@ class ETH3D(Wrapper):
                    "--compress_depth_maps", "1"]
         self.__call__(options)
 
-    def inspect_dataset(self, scan_meshlab, colmap_model, image_path=None, occlusions=None, splats=None):
+    def inspect_dataset(self, scan_meshlab, colmap_model, occlusions=None, splats=None, image_path=None):
         if image_path is None:
             image_path = self.image_path
         options = ["DatasetInspector", "--scan_alignment_path", scan_meshlab,
