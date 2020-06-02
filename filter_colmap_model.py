@@ -11,28 +11,11 @@ parser = ArgumentParser(description='Take all the drone videos of a folder and p
                                     'location in a COLMAP file for vizualisation',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--colmap_model_folder', metavar='DIR', type=Path)
-parser.add_argument('--output_folder_model', metavar='DIR', type=Path)
+parser.add_argument('--input_images_colmap', metavar='FILE', type=Path)
+parser.add_argument('--output_images_colmap', metavar='FILE', type=Path)
 parser.add_argument('--interpolate', action="store_true")
-parser.add_argument('--metadata', metavar='DIR', type=Path)
+parser.add_argument('--metadata', metavar='FILE', type=Path)
 parser.add_argument('--visualize', action="store_true")
-
-
-def world_to_colmap(frame_qvec, frame_tvec):
-    '''
-    frame_qvec is written in the NED system (north east down)
-    frame_tvec is already is the world system (east norht up)
-    '''
-    world2NED = np.float32([[0, 1, 0],
-                            [1, 0, 0],
-                            [0, 0, -1]])
-    NED2cam = np.float32([[0, 1, 0],
-                          [0, 0, 1],
-                          [1, 0, 0]])
-    world2cam = NED2cam @ rm.qvec2rotmat(frame_qvec).T @ world2NED
-    cam_tvec = - world2cam  @ frame_tvec
-    cam_qvec = rm.rotmat2qvec(world2cam)
-    return cam_qvec, cam_tvec
 
 
 '''
@@ -49,6 +32,11 @@ def colmap_to_world(tvec, qvec):
 def colmap_to_world(tvec, qvec):
     quats = Rotation.from_quat(qvec)
     return -quats.apply(tvec, inverse=True)
+
+
+def world_to_colmap(tvec, qvec):
+    quats = Rotation.from_quat(qvec)
+    return -quats.apply(tvec, inverse=False)
 
 
 def NEDtoworld(qvec):
@@ -77,8 +65,8 @@ def get_outliers(series, threshold):
 
 def slerp_quats(quat_df, prefix=""):
     valid_df = quat_df[~quat_df["outlier"]]
-    valid_index = valid_df["time"]
-    total_index = quat_df["time"]
+    valid_index = valid_df.index
+    total_index = quat_df.index
 
     # Note that scipy uses a different order convention than colmap
     quats = Rotation.from_quat(valid_df[["{}q{}".format(prefix, col) for col in list("xyzw")]].values)
@@ -88,12 +76,17 @@ def slerp_quats(quat_df, prefix=""):
     return pd.DataFrame(slerp(total_index).as_quat(), index=quat_df.index)
 
 
-def filter_colmap_model(input, output, metadata_path,
+def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path,
                         filter_degree=3, filter_time=0.1,
                         threshold_t=0.01, threshold_q=5e-3,
-                        visualize=False, **env):
-    images_dict = rm.read_images_text(input / "images.txt")
-    metadata = pd.read_csv(metadata_path).set_index("db_id").sort_values("time")
+                        visualize=False, max_interpolate=2, **env):
+    if input_images_colmap.ext == ".txt":
+        images_dict = rm.read_images_text(input_images_colmap)
+    elif input_images_colmap.ext == ".bin":
+        images_dict = rm.read_images_binary(input_images_colmap)
+    else:
+        print(input_images_colmap.ext)
+    metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
     framerate = metadata["framerate"].iloc[0]
     filter_length = 2*int(filter_time * framerate) + 1
 
@@ -101,8 +94,8 @@ def filter_colmap_model(input, output, metadata_path,
     image_df = image_df.reindex(metadata.index)
     metadata["outlier"] = image_df.isna().any(axis="columns")
     colmap_outliers = sum(metadata["outlier"])
+    total_frames = len(metadata)
     image_df = image_df.dropna()
-
     tvec = np.stack(image_df["tvec"].values)
     qvec = np.stack(image_df["qvec"].values)
 
@@ -111,7 +104,6 @@ def filter_colmap_model(input, output, metadata_path,
     # A quaternion is flipped if the dot product is negative
 
     flips = list((np.sum(qvec[1:] * qvec[:-1], axis=1) < 0).nonzero()[0] + 1)
-    print(flips)
     flips.append(qvec.shape[0])
     for j, k in zip(flips[::2], flips[1::2]):
         qvec[j:k] *= -1
@@ -120,8 +112,15 @@ def filter_colmap_model(input, output, metadata_path,
     quat_columns = ["colmap_qw", "colmap_qx", "colmap_qy", "colmap_qz"]
     metadata[tvec_columns] = pd.DataFrame(tvec, index=image_df.index)
     metadata[quat_columns] = pd.DataFrame(qvec, index=image_df.index)
+    metadata["time (s)"] = metadata["time"] / 1e6
+    metadata = metadata.set_index("time (s)")
 
     # Interpolate missing values for tvec and quat
+    # In order to avoid extrapolation, we get rid of outlier at the beginning and the end of the sequence
+
+    first_valid = metadata["outlier"].idxmin()
+    last_valid = metadata["outlier"][::-1].idxmin()
+    metadata = metadata.loc[first_valid:last_valid]
 
     metadata[tvec_columns] = metadata[tvec_columns].interpolate()
     metadata[["colmap_qx", "colmap_qy", "colmap_qz", "colmap_qw"]] = slerp_quats(metadata, prefix="colmap_")
@@ -183,37 +182,12 @@ def filter_colmap_model(input, output, metadata_path,
         colmap_speeds.plot()
         plt.gcf().canvas.set_window_title('speeds from colmap (noisy)')
         metadata[["x", "y", "z", "tx", "ty", "tz"]].plot()
-        plt.gcf().canvas.set_window_title('GPS(xyz) vs colmap position (tx,ty,tz')
+        plt.gcf().canvas.set_window_title('GPS(xyz) vs colmap position (tx,ty,tz)')
         metadata[["ref_qw", "ref_qx", "ref_qy", "ref_qz"]].plot()
         plt.gcf().canvas.set_window_title('quaternions from sensor')
-
-    metadata["outlier"] = metadata["outlier"] | \
-        get_outliers(metadata["outliers_pos"], threshold_t) | \
-        get_outliers(metadata["outlier_rot"], threshold_q)
-    metadata.loc[metadata["outlier"], ["tx", "ty", "tz", "qw", "qx", "qy", "qz"]] = np.NaN
-    world_tvec_interp = metadata[["tx", "ty", "tz"]].interpolate().values
-    world_qvec_interp = slerp_quats(metadata).values
-
-    world_tvec_smoothed = savgol_filter(world_tvec_interp, filter_length, filter_degree, axis=0)
-    qvec_smoothed = savgol_filter(world_qvec_interp, filter_length, filter_degree, axis=0)
-    qvec_smoothed /= np.linalg.norm(qvec_smoothed, axis=1, keepdims=True)
-
-    metadata["tx_smoothed"] = world_tvec_smoothed[:, 0]
-    metadata["ty_smoothed"] = world_tvec_smoothed[:, 1]
-    metadata["tz_smoothed"] = world_tvec_smoothed[:, 2]
-
-    metadata["qx_smoothed"] = qvec_smoothed[:, 0]
-    metadata["qy_smoothed"] = qvec_smoothed[:, 1]
-    metadata["qz_smoothed"] = qvec_smoothed[:, 2]
-    metadata["qw_smoothed"] = qvec_smoothed[:, 3]
-
-    if visualize:
-        metadata[["tx_smoothed", "ty_smoothed", "tz_smoothed"]].diff().plot()
-        plt.gcf().canvas.set_window_title('speed from filtered and smoothed')
-
-        metadata[["qw", "qx", "qy", "qz",
-                  "qw_smoothed", "qx_smoothed", "qy_smoothed", "qz_smoothed"]].plot()
+        ax_q = metadata[["qw", "qx", "qy", "qz"]].plot()
         plt.gcf().canvas.set_window_title('quaternions from colmap vs from smoothed')
+
         metadata[["colmap_q{}2".format(col) for col in list('wxyz')]] = metadata[['colmap_qw',
                                                                                   'colmap_qx',
                                                                                   'colmap_qy',
@@ -222,40 +196,83 @@ def filter_colmap_model(input, output, metadata_path,
                                                                                     'qx_filtered',
                                                                                     'qy_filtered',
                                                                                     'qz_filtered']].shift()
+        metadata = metadata.apply(quaternion_distances(prefix="colmap_"), axis='columns')
+        metadata = metadata.apply(quaternion_distances(suffix="_filtered"), axis='columns')
+        ax_qdist = metadata[["colmap_qdist", "qdist_filtered"]].plot()
+        plt.gcf().canvas.set_window_title('quaternions variations colmap vs filtered vs smoothed')
+
+    metadata["outlier"] = metadata["outlier"] | \
+        get_outliers(metadata["outliers_pos"], threshold_t) | \
+        get_outliers(metadata["outlier_rot"], threshold_q)
+
+    first_valid = metadata["outlier"].idxmin()
+    last_valid = metadata["outlier"][::-1].idxmin()
+    metadata = metadata.loc[first_valid:last_valid]
+
+    metadata.loc[metadata["outlier"], ["tx", "ty", "tz", "qw", "qx", "qy", "qz"]] = np.NaN
+    world_tvec_interp = metadata[["tx", "ty", "tz"]].interpolate(method="polynomial", order=3).values
+    world_qvec_interp = slerp_quats(metadata).values
+
+    world_tvec_smoothed = savgol_filter(world_tvec_interp, filter_length, filter_degree, axis=0)
+    qvec_smoothed = savgol_filter(world_qvec_interp, filter_length, filter_degree, axis=0)
+    qvec_smoothed /= np.linalg.norm(qvec_smoothed, axis=1, keepdims=True)
+
+    colmap_tvec_smoothed = world_to_colmap(world_tvec_smoothed, qvec_smoothed)
+
+    metadata["tx_smoothed"] = colmap_tvec_smoothed[:, 0]
+    metadata["ty_smoothed"] = colmap_tvec_smoothed[:, 1]
+    metadata["tz_smoothed"] = colmap_tvec_smoothed[:, 2]
+
+    metadata["qx_smoothed"] = qvec_smoothed[:, 0]
+    metadata["qy_smoothed"] = qvec_smoothed[:, 1]
+    metadata["qz_smoothed"] = qvec_smoothed[:, 2]
+    metadata["qw_smoothed"] = qvec_smoothed[:, 3]
+
+    if visualize:
+        metadata["world_tx_smoothed"] = world_tvec_smoothed[:, 0]
+        metadata["world_ty_smoothed"] = world_tvec_smoothed[:, 1]
+        metadata["world_tz_smoothed"] = world_tvec_smoothed[:, 2]
+        metadata[["world_tx_smoothed", "world_ty_smoothed", "world_tz_smoothed"]].diff().plot()
+        plt.gcf().canvas.set_window_title('speed from filtered and smoothed')
+        metadata[["qw_smoothed", "qx_smoothed", "qy_smoothed", "qz_smoothed"]].plot(ax=ax_q)
         metadata[["q{}2_smoothed".format(col) for col in list('wxyz')]] = metadata[['qw_smoothed',
                                                                                     'qx_smoothed',
                                                                                     'qy_smoothed',
                                                                                     'qz_smoothed']].shift()
-        metadata = metadata.apply(quaternion_distances(prefix="colmap_"), axis='columns')
-        metadata = metadata.apply(quaternion_distances(suffix="_filtered"), axis='columns')
         metadata = metadata.apply(quaternion_distances(suffix="_smoothed"), axis='columns')
-        metadata[["colmap_qdist", "qdist_filtered", "qdist_smoothed"]].plot()
-        plt.gcf().canvas.set_window_title('GPS(xyz) vs colmap position')
+        metadata[["qdist_smoothed"]].plot(ax=ax_qdist)
         metadata[["outlier"]].astype(float).plot()
         plt.gcf().canvas.set_window_title('outliers indices')
 
     print("number of not localized by colmap : {}/{} ({:.2f}%)".format(colmap_outliers,
-                                                                       len(metadata),
-                                                                       100 * colmap_outliers/len(metadata)))
+                                                                       total_frames,
+                                                                       100 * colmap_outliers/total_frames))
     print("Total number of outliers : {} / {} ({:.2f}%)".format(sum(metadata["outlier"]),
-                                                                len(metadata),
-                                                                100 * sum(metadata["outlier"])/len(metadata)))
+                                                                total_frames,
+                                                                100 * sum(metadata["outlier"])/total_frames))
 
     if visualize:
         plt.show()
 
-    smoothed_images_dict = {}
-    for db_id, row in metadata.iterrows():
-        smoothed_images_dict[db_id] = rm.Image(id=db_id,
-                                               qvec=row[["qw_smoothed", "qx_smoothed", "qy_smoothed", "qz_smoothed"]].values,
-                                               tvec=row[["tx_smoothed", "ty_smoothed", "tz_smoothed"]].values,
-                                               camera_id=row["camera_id"],
-                                               name=row["image_path"],
-                                               xys=[], point3D_ids=[])
-        rm.write_images_text(smoothed_images_dict, output / "images.txt")
+    if output_images_colmap is not None:
+        smoothed_images_dict = {}
+        interpolated_frames = []
+        for _, row in metadata.iterrows():
+            db_id = row["db_id"]
+            if row["outlier"]:
+                interpolated_frames.append(row["image_path"])
+            smoothed_images_dict[db_id] = rm.Image(id=db_id,
+                                                   qvec=row[["qw_smoothed", "qx_smoothed", "qy_smoothed", "qz_smoothed"]].values,
+                                                   tvec=row[["tx_smoothed", "ty_smoothed", "tz_smoothed"]].values,
+                                                   camera_id=row["camera_id"],
+                                                   name=row["image_path"],
+                                                   xys=[], point3D_ids=[])
+        rm.write_images_text(smoothed_images_dict, output_images_colmap)
+
+    return interpolated_frames
 
 
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
-    filter_colmap_model(input=args.colmap_model_folder, output=args.output_folder_model, metadata_path=args.metadata, **env)
+    filter_colmap_model(metadata_path=args.metadata, **env)

@@ -44,17 +44,19 @@ def preprocess_metadata(metadata, proj, centroid):
             if metadata["location_valid"].iloc[0] == 0:
                 end = validity_start.pop(0)
                 positions[:end] = extrapolate_position(speed[:end], timestamps[:end], None, positions[end])
-                print(positions[:end], end)
             if metadata["location_valid"].iloc[-1] == 0:
                 start = invalidity_start.pop(-1) - 1
                 positions[start:] = extrapolate_position(speed[start:], timestamps[start:], positions[start], None)
 
             if(len(invalidity_start) != len(validity_start)):
-                print("error")
+                raise ValueError("error, invalidity_start ({}) and validity_start({})"
+                                 " are not the same length ({} vs {})".format(invalidity_start,
+                                                                              validity_start,
+                                                                              len(invalidity_start),
+                                                                              len(validity_start)))
 
             for start, end in zip(invalidity_start, validity_start):
                 positions[start:end] = extrapolate_position(speed[start:end], timestamps[start:end], positions[start], positions[end])
-        print(positions)
         positions -= centroid
 
     metadata["x"], metadata["y"], metadata["z"] = positions.transpose()

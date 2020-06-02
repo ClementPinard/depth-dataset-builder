@@ -118,16 +118,19 @@ def prepare_workspace(path, env):
     env["georefrecon_ply"] = env["georef_recon"] / "georef_reconstruction.ply"
     env["matrix_path"] = env["workspace"] / "matrix_thorough.txt"
     env["indexed_vocab_tree"] = env["workspace"] / "vocab_tree_thorough.bin"
+    env["dense_workspace"] = env["thorough_recon"].parent/"dense"
 
 
-def prepare_video_workspace(video_name, video_frames_folder, output_folder, video_recon, image_path, **env):
+def prepare_video_workspace(video_name, video_frames_folder,
+                            raw_output_folder, converted_output_folder,
+                            video_recon, video_path, **env):
     video_env = {video_name: video_name,
                  video_frames_folder: video_frames_folder}
-    relative_path_folder = video_frames_folder.relpath(image_path)
+    relative_path_folder = video_frames_folder.relpath(video_path)
     video_env["lowfps_db"] = video_frames_folder / "video_low_fps.db"
     video_env["metadata"] = video_frames_folder / "metadata.csv"
     video_env["lowfps_image_list_path"] = video_frames_folder / "lowfps.txt"
-    video_env["chunk_image_list_paths"] = video_frames_folder.files("full_chunk_*.txt")
+    video_env["chunk_image_list_paths"] = sorted(video_frames_folder.files("full_chunk_*.txt"))
     video_env["chunk_dbs"] = [video_frames_folder / fp.namebase + ".db" for fp in video_env["chunk_image_list_paths"]]
     colmap_root = video_recon / relative_path_folder
     video_env["colmap_models_root"] = colmap_root
@@ -137,15 +140,17 @@ def prepare_video_workspace(video_name, video_frames_folder, output_folder, vide
     video_env["chunk_models"] = [colmap_root / "chunk_{}".format(index) for index in range(num_chunks)]
     video_env["final_model"] = colmap_root / "final"
     output = {}
-    output["images_root_folder"] = output_folder / "images"
+    output["images_root_folder"] = raw_output_folder / "images"
     output["video_frames_folder"] = output["images_root_folder"] / relative_path_folder
-    output["viz_folder"] = output_folder / "video" / relative_path_folder
-    output["model_folder"] = output_folder / "models" / relative_path_folder
+    output["model_folder"] = raw_output_folder / "models" / relative_path_folder
+    output["interpolated_frames_list"] = output["model_folder"] / "interpolated_frames.txt"
     output["final_model"] = output["model_folder"] / "final"
     output["video_fps"] = pd.read_csv(video_env["metadata"])["framerate"].values[0]
+    output["kitti_format_folder"] = converted_output_folder / "KITTI" / relative_path_folder
+    output["viz_folder"] = converted_output_folder / "video" / relative_path_folder
     video_env["output_env"] = output
     video_env["already_localized"] = env["resume_work"] and output["model_folder"].isdir()
-    video_env["GT_already_done"] = env["resume_work"] and (output_folder / "groundtruth_depth" / video_name.namebase).isdir()
+    video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "groundtruth_depth" / video_name.namebase).isdir()
     return video_env
 
 
@@ -154,6 +159,7 @@ def main():
     env = vars(args)
     if args.show_steps:
         print_workflow()
+        return
     if args.add_new_videos:
         args.skip_step += [1, 2, 4, 5, 6]
     if args.begin_step is not None:
@@ -164,6 +170,7 @@ def main():
     colmap = Colmap(db=env["thorough_db"],
                     image_path=env["image_path"],
                     mask_path=env["mask_path"],
+                    dense_workspace=env["dense_workspace"],
                     binary=args.colmap,
                     verbose=args.verbose,
                     logfile=args.log)
@@ -172,7 +179,8 @@ def main():
     env["ffmpeg"] = ffmpeg
     pdraw = PDraw(args.nw, verbose=args.verbose, logfile=args.log)
     env["pdraw"] = pdraw
-    eth3d = ETH3D(args.eth3d, args.output_folder / "Images", verbose=args.verbose, logfile=args.log)
+    eth3d = ETH3D(args.eth3d, args.raw_output_folder / "Images", args.max_occlusion_depth,
+                  verbose=args.verbose, logfile=args.log)
     env["eth3d"] = eth3d
     pcl_util = PCLUtil(args.pcl_util, verbose=args.verbose, logfile=args.log)
     env["pcl_util"] = pcl_util
@@ -190,13 +198,6 @@ def main():
         env["pointclouds"] = env["lidar_path"].files("*inliers.ply")
         centroid_path = sorted(env["lidar_path"].files("*_centroid.txt"))[0]
         env["centroid"] = np.loadtxt(centroid_path)
-
-    i += 1
-    if i not in args.skip_step:
-        print_step(i, "Occlusion Mesh computing")
-        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
-        pcl_util.triangulate_mesh(env["occlusion_ply"], env["with_normals_path"], resolution=args.mesh_resolution)
-        eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
 
     i += 1
     if i not in args.skip_step:
@@ -244,8 +245,10 @@ def main():
         gsm.process_folder(folder_to_process=env["video_path"], **env)
         colmap.extract_features(image_list=env["video_frame_list_thorough"], more=args.more_sift_features)
         colmap.index_images(vocab_tree_output=env["indexed_vocab_tree"], vocab_tree_input=args.vocab_tree)
-        colmap.match()
+        colmap.match(method="vocab_tree", vocab_tree=env["indexed_vocab_tree"])
         colmap.map(output=env["thorough_recon"].parent)
+        colmap.adjust_bundle(output=env["thorough_recon"], input=env["thorough_recon"],
+                             num_iter=100, refine_extra_params=True)
 
     i += 1
     if i not in args.skip_step:
@@ -255,16 +258,9 @@ def main():
                            input=env["thorough_recon"],
                            ref_images=env["georef_frames_list"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
-        if args.dense:
-            print_step("{} (bis)".format(i), "Point cloud densificitation")
-            dense_workspace = env["thorough_recon"].parent/"dense"
-            colmap.undistort(input=env["georef_recon"], output=dense_workspace)
-            colmap.dense_stereo(workspace=dense_workspace)
-            colmap.stereo_fusion(workspace=dense_workspace, output=env["georefrecon_ply"])
-        else:
-            colmap.export_model(output=env["georefrecon_ply"],
-                                input=env["georef_recon"])
     if args.inspect_dataset:
+        colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",
+                            input=env["georef_recon"])
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
         mxw.create_project(georef_mlp, [env["georefrecon_ply"]])
         colmap.export_model(output=env["georef_recon"],
@@ -273,6 +269,25 @@ def main():
         eth3d.inspect_dataset(scan_meshlab=georef_mlp,
                               colmap_model=env["georef_recon"],
                               image_path=env["image_path"])
+
+    i += 1
+    if i not in args.skip_step:
+        print_step(i, "Video localization with respect to reconstruction")
+        for j, v in enumerate(env["videos_list"]):
+            print("\n\nNow working on video {} [{}/{}]".format(v, j + 1, len(env["videos_list"])))
+            video_env = env["videos_workspaces"][v]
+            localize_video(video_name=v,
+                           video_frames_folder=env["videos_frames_folders"][v],
+                           video_index=j+1,
+                           num_videos=len(env["videos_list"]),
+                           **video_env, **env)
+
+    i += 1
+    if i not in args.skip_step:
+        print_step(i, "Full reconstruction point cloud densificitation")
+        colmap.undistort(input=env["georef_full_recon"])
+        colmap.dense_stereo()
+        colmap.stereo_fusion(output=env["georefrecon_ply"])
 
     i += 1
     if i not in args.skip_step:
@@ -299,26 +314,22 @@ def main():
         print("Error, no registration matrix can be found")
         env["global_registration_matrix"] = np.eye(4)
 
-    mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
-    mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"]], transforms=[env["global_registration_matrix"]])
-    mxw.create_project(env["splats_mlp"], [env["splats_ply"]], transforms=[env["global_registration_matrix"]])
-
     if args.inspect_dataset:
+        mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
+        mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"]], transforms=[env["global_registration_matrix"]])
+        mxw.create_project(env["splats_mlp"], [env["splats_ply"]], transforms=[env["global_registration_matrix"]])
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_recon"],
                               image_path=env["image_path"])
 
     i += 1
     if i not in args.skip_step:
-        print_step(i, "Video localization")
-        for j, v in enumerate(env["videos_list"]):
-            print("\n\nNow working on video {} [{}/{}]".format(v, j + 1, len(env["videos_list"])))
-            video_env = env["videos_workspaces"][v]
-            localize_video(video_name=v,
-                           video_frames_folder=env["videos_frames_folders"][v],
-                           video_index=j+1,
-                           num_videos=len(env["videos_list"]),
-                           **video_env, **env)
+        print_step(i, "Occlusion Mesh computing")
+        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
+        pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"], env["matrix_path"],
+                                 output=env["with_normals_path"], resolution=args.mesh_resolution)
+        colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"])
+        eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
 
     i += 1
     if i not in args.skip_step:
@@ -329,6 +340,7 @@ def main():
             generate_GT(video_name=v, GT_already_done=video_env["GT_already_done"],
                         video_index=j+1,
                         num_videos=len(env["videos_list"]),
+                        metadata=video_env["metadata"],
                         **video_env["output_env"], **env)
 
 

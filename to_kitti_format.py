@@ -2,48 +2,63 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
 from imageio import imread, imwrite
 import numpy as np
-from colmap import read_model as rm
+from colmap_util import read_model as rm
 from skimage.transform import rescale
 from skimage.measure import block_reduce
+import gzip
+from pebble import ProcessPool
+from tqdm import tqdm
 
 parser = ArgumentParser(description='create a vizualisation from ground truth created',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--img_root', metavar='DIR', type=Path)
+parser.add_argument('--img_dir', metavar='DIR', type=Path)
 parser.add_argument('--depth_dir', metavar='DIR', type=Path)
 parser.add_argument('--input_model', metavar='DIR', type=Path)
 parser.add_argument('--output_dir', metavar='DIR', default=None, type=Path)
 parser.add_argument('--downscale', type=int, default=1)
 
 
-def save_intrinsics(cam, output_dir):
-    assert('PINHOLE' in cam.model)
-    if 'SIMPLE' in cam.model:
-        fx, cx, cy = cam.params
-        fy = fx
+def save_intrinsics(cameras, images, output_dir, downscale=1):
+    def construct_intrinsics(cam):
+        assert('PINHOLE' in cam.model)
+        if 'SIMPLE' in cam.model:
+            fx, cx, cy = cam.params
+            fy = fx
+        else:
+            fx, fy, cx, cy = cam.params
+
+        return np.array([[fx / downscale, 0, cx / downscale],
+                         [0, fy / downscale, cy / downscale],
+                         [0, 0, 1]])
+
+    if len(cameras) == 1:
+        cam = cameras[list(cameras.keys())[0]]
+        intrinsics = construct_intrinsics(cam)
+        np.savetxt(output_dir / 'intrinsics.txt', intrinsics)
     else:
-        fx, fy, cx, cy = cam.params
+        for _, img in images.items():
+            cam = cameras[img.camera_id]
+            intrinsics = construct_intrinsics(cam)
+            intrinsics_name = output_dir / Path(img.name).namebase + "_intrinsics.txt"
+            np.savetxt(intrinsics_name, intrinsics)
 
-    intrinsics = np.array([[fx, 0, cx],
-                           [0, fy, cy],
-                           [0, 0, 1]])
-    np.savetxt(output_dir/'intrinsics.txt', intrinsics)
 
-
-def save_depth_maps(cam, depth_maps, output_dir, downscale=1):
+def process_one_frame(cameras, img, img_root, depth_dir, output_dir, downscale):
+    cam = cameras[img.camera_id]
+    img_name = Path(img.name)
+    depth_path = depth_dir / img_name.basename() + ".gz"
     h, w = cam.width, cam.height
-    for depth_path in depth_maps:
-        depth = np.fromfile(depth_path, np.float32).reshape(h, w)
-        downscale_depth = block_reduce(depth, (downscale, downscale), np.min)
-        depth_name = depth_path.namebase + '.npy'
-        np.save(output_dir / depth_name, downscale_depth)
+    with gzip.open(depth_path, "rb") as f:
+        depth = np.frombuffer(f.read(), np.float32).reshape(h, w)
+    downscaled_depth = block_reduce(depth, (downscale, downscale), np.min)
+    output_depth_name = output_dir / img_name.basename() + '.npy'
+    np.save(output_depth_name, downscaled_depth)
 
-
-def save_imgs(img_root, images, depth_maps, output_dir, downscale=1):
-    for _, img in images.items():
-        img_path = img_root/img.name
-        image = rescale(imread(img_path), 1/downscale, multichannel=True)*255
-        imwrite(output_dir/img_path.basename(), image.astype(np.uint8))
+    input_img_path = img_root / img_name
+    output_img_path = output_dir / img_name.basename()
+    image = rescale(imread(input_img_path), 1/downscale, multichannel=True)*255
+    imwrite(output_img_path, image.astype(np.uint8))
 
 
 def save_positions(images, output_dir):
@@ -66,25 +81,30 @@ def to_transform_matrix(q, t):
     return transform
 
 
-def main():
-    args = parser.parse_args()
-    cameras, images, _ = rm.read_model(args.input_model, '.txt')
-    assert(len(cameras) == 1)
-    cam = cameras[list(cameras.keys())[0]]
-    save_intrinsics(cam, args.output_dir)
-    depth_maps = []
-    for key, i in images.items():
-        fname = Path(i.name).basename()
-        depth_path = args.depth_dir / fname
-        if depth_path.isfile():
-            depth_maps.append(depth_path)
-        else:
-            print("Image {} was not registered".format(fname))
-            images[key] = None
-    save_depth_maps(cam, depth_maps, args.output_dir, args.downscale)
-    save_imgs(args.img_root, images, depth_maps, args.output_dir, args.downscale)
-    save_positions(images, args.output_dir)
+def convert_to_kitti(input_model, img_dir, depth_dir, output_dir, downscale=1, threads=1, **env):
+    cameras, images, _ = rm.read_model(input_model, '.txt')
+    save_intrinsics(cameras, images, output_dir, downscale)
+    save_positions(images, output_dir)
+    if threads == 1:
+        for _, img in tqdm(images.items()):
+            process_one_frame(cameras, img, img_dir, depth_dir, output_dir, downscale)
+    else:
+        with ProcessPool(max_workers=threads) as pool:
+
+            tasks = pool.map(process_one_frame, [cameras] * len(images),
+                             [img for _, img in images.items()],
+                             [img_dir] * len(images),
+                             [depth_dir] * len(images),
+                             [output_dir] * len(images),
+                             [downscale] * len(images))
+            try:
+                for _ in tqdm(tasks.result(), total=len(images)):
+                    pass
+            except KeyboardInterrupt as e:
+                tasks.cancel()
+                raise e
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    convert_to_kitti(vars(args))

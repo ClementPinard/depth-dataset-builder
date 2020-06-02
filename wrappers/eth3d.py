@@ -4,10 +4,11 @@ from .default_wrapper import Wrapper
 class ETH3D(Wrapper):
     """docstring for Colmap"""
 
-    def __init__(self, build_folder, image_path, *args, **kwargs):
+    def __init__(self, build_folder, image_path, max_occlusion_depth, *args, **kwargs):
         super().__init__(None, *args, **kwargs)
         self.build_folder = build_folder
         self.image_path = image_path
+        self.max_occlusion_depth = max_occlusion_depth
 
     def __call__(self, options):
         self.binary = self.build_folder / options[0]
@@ -44,6 +45,7 @@ class ETH3D(Wrapper):
                    "--image_base_path", self.image_path, "--state_path", colmap_model,
                    "--output_folder_path", output_folder, "--occlusion_mesh_path", occlusions,
                    "--occlusion_splats_path", splats,
+                   "--max_occlusion_depth", str(self.max_occlusion_depth),
                    "--write_point_cloud", "1" if point_cloud else "0",
                    "--write_depth_maps", "1" if depth_maps else "0",
                    "--write_occlusion_depth", "1" if occlusion_maps else "0",
@@ -54,7 +56,8 @@ class ETH3D(Wrapper):
         if image_path is None:
             image_path = self.image_path
         options = ["DatasetInspector", "--scan_alignment_path", scan_meshlab,
-                   "--image_base_path", image_path, "--state_path", colmap_model]
+                   "--image_base_path", image_path, "--state_path", colmap_model,
+                   "--max_occlusion_depth", str(self.max_occlusion_depth)]
         if occlusions is not None:
             options += ["--occlusion_mesh_path", occlusions]
         if splats is not None:

@@ -91,10 +91,10 @@ int main(int argc, char** argv) {
   // Set typical values for the parameters
   gp3.setMu (2.5);
   gp3.setMaximumNearestNeighbors (100);
-  gp3.setMaximumSurfaceAngle(M_PI);
+  gp3.setMaximumSurfaceAngle(M_PI/2);
   gp3.setMinimumAngle(0);
   gp3.setMaximumAngle(2 * M_PI);
-  gp3.setNormalConsistency(false);
+  gp3.setNormalConsistency(true);
 
   // Get result
   gp3.setInputCloud (point_normal_cloud);

@@ -34,3 +34,9 @@ class PCLUtil(Wrapper):
                    "--output", output_file, "--knn", str(knn),
                    "--std", str(std)]
         self.__call__(options)
+
+    def create_vis_file(self, georef_dense, lidar, georef_matrix, output, resolution):
+        options = ["CreateVisFile", "--georef_dense", georef_dense,
+                   "--lidar", lidar, "--georef_matrix", georef_matrix,
+                   "--output_cloud", output, "--resolution", str(resolution)]
+        self.__call__(options)

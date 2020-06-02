@@ -4,11 +4,12 @@ from .default_wrapper import Wrapper
 class Colmap(Wrapper):
     """docstring for Colmap"""
 
-    def __init__(self, db, image_path, mask_path, *args, **kwargs):
+    def __init__(self, db, image_path, mask_path, dense_workspace, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.db = db
         self.image_path = image_path
         self.mask_path = mask_path
+        self.dense_workspace = dense_workspace
 
     def extract_features(self, per_sub_folder=False, image_list=None, model="RADIAL", more=False):
         options = ["feature_extractor", "--database_path", self.db,
@@ -36,7 +37,9 @@ class Colmap(Wrapper):
             assert vocab_tree is not None
             options += ["--SequentialMatching.loop_detection", "1",
                         "--SequentialMatching.vocab_tree_path", vocab_tree]
-
+        if method == "vocab_tree":
+            assert vocab_tree is not None
+            options += ["--VocabTreeMatching.vocab_tree_path", vocab_tree]
         self.__call__(options)
 
     def map(self, output, input=None, multiple_models=False, start_frame_id=None):
@@ -58,12 +61,13 @@ class Colmap(Wrapper):
                    "--input_path", input]
         self.__call__(options)
 
-    def adjust_bundle(self, output, input, num_iter=10):
+    def adjust_bundle(self, output, input, refine_extra_params=False, num_iter=10):
         options = ["bundle_adjuster",
                    "--output_path", output,
                    "--input_path", input,
-                   "--BundleAdjustment.refine_extra_params", "0",
                    "--BundleAdjustment.max_num_iterations", str(num_iter)]
+        if not refine_extra_params:
+            options += ["--BundleAdjustment.refine_extra_params", "0"]
         self.__call__(options)
 
     def triangulate_points(self, output, input, clear_points=True):
@@ -87,23 +91,36 @@ class Colmap(Wrapper):
                    "--output_path", output, "--output_type", output_type]
         self.__call__(options)
 
-    def undistort(self, output, input, max_image_size=1000):
+    def undistort(self, input, max_image_size=1000):
         options = ["image_undistorter", "--image_path", self.image_path,
-                   "--input_path", input, "--output_path", output,
+                   "--input_path", input, "--output_path", self.dense_workspace,
                    "--output_type", "COLMAP", "--max_image_size", str(max_image_size)]
         self.__call__(options)
 
-    def dense_stereo(self, workspace):
-        options = ["patch_match_stereo", "--workspace_path", workspace,
+    def dense_stereo(self):
+        options = ["patch_match_stereo", "--workspace_path", self.dense_workspace,
                    "--workspace_format", "COLMAP",
                    "--PatchMatchStereo.geom_consistency", "1"]
         self.__call__(options)
 
-    def stereo_fusion(self, workspace, output):
-        options = ["stereo_fusion", "--workspace_path", workspace,
+    def stereo_fusion(self, output):
+        options = ["stereo_fusion", "--workspace_path", self.dense_workspace,
                    "--workspace_format", "COLMAP",
                    "--input_type", "geometric",
                    "--output_path", output]
+        self.__call__(options)
+
+    def delaunay_mesh(self, output, input_ply, input_vis=None):
+        if input_vis is None:
+            input_vis = input_ply + ".vis"
+
+        fused = self.dense_workspace / "fused.ply"
+        if fused != input_ply:
+            fused.remove_p()
+            (fused + ".vis").remove_p()
+            input_ply.link(fused)
+            input_vis.link(fused + ".vis")
+        options = ["delaunay_mesher", "--input_type", "dense", "--input_path", self.dense_workspace, "--output_path", output]
         self.__call__(options)
 
     def merge_models(self, output, input1, input2):

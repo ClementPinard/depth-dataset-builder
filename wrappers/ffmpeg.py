@@ -22,8 +22,11 @@ class FFMpeg(Wrapper):
         '''
         Typical command string :
         ffmpeg -i in.mp4 -vf select='eq(n\\,100)+eq(n\\,184)+eq(n\\,213)' -vsync 0 frames%d.jpg
+
+        Note: Surprisingly, frames in the eq function are starting at 0, whereas the rest is starting at 1,
+        so we need to decrement the frame index compared to what we would have got when extracting every frame
         '''
-        select_string = "select='" + '+'.join(['eq(n\\,{})'.format(f) for f in frame_ids]) + "'"
+        select_string = "select='" + '+'.join(['eq(n\\,{})'.format(f-1) for f in frame_ids]) + "'"
         frame_string = output_folder/(video_file.namebase + "tmp_%05d.jpg")
         ffmpeg_options = ["-y", "-i", video_file,
                           "-vf", select_string, "-vsync", "0",

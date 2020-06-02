@@ -240,11 +240,17 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         path_lists_output[v]["frames_lowfps"] = frame_paths
         path_lists_output[v]["georef_lowfps"] = georef
         num_chunks = len(video_metadata) // max_sequence_length + 1
-        path_lists_output[v]["frames_full"] = [list(frames) for frames in np.array_split(video_metadata["image_path"],
-                                                                                         num_chunks)]
+        chunks = [list(frames) for frames in np.array_split(video_metadata["image_path"],
+                                                            num_chunks)]
+        # Add some overlap between chunks, in order to ease the model merging afterwards
+        for chunk, next_chunk in zip(chunks, chunks[1:]):
+            chunk.extend(next_chunk[:10])
+        path_lists_output[v]["frames_full"] = chunks
+
         if save_space:
             frame_ids = set(video_metadata[video_metadata["sampled"]]["frame"].values) | \
                 set(video_metadata_1fps["frame"].values)
+            frame_ids = sorted(list(frame_ids))
             if len(frame_ids) > 0:
                 extracted_frames = env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
         else:
