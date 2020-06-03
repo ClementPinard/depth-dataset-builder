@@ -20,8 +20,7 @@ parser.add_argument('--video_folder', metavar='DIR',
                     help='path to videos', type=Path)
 parser.add_argument('--system', default='epsg:2154')
 parser.add_argument('--centroid_path', default=None)
-parser.add_argument('--output_folder', metavar='DIR', type=Path)
-parser.add_argument('--image_path', metavar='DIR', type=Path)
+parser.add_argument('--colmap_img_root', metavar='DIR', type=Path)
 parser.add_argument('--output_format', metavar='EXT', default="bin")
 parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
 parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"])
@@ -264,11 +263,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
     env["videos_list"] = sum((list(args.video_folder.walkfiles('*{}'.format(ext))) for ext in args.vid_ext), [])
-    output_video_folder = args.output_folder / "Videos"
+    output_video_folder = args.colmap_img_root / "Videos"
     output_video_folder.makedirs_p()
     env["image_path"] = args.output_folder
     env["output_video_folder"] = output_video_folder
-    env["existing_pictures"] = sum((list(args.output_folder.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
+    existing_pictures = sum((list(args.output_folder.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
+    env["existing_pictures"] = [p.relpath(args.colmap_img_root) for p in existing_pictures]
     env["pdraw"] = PDraw(args.nw, verbose=args.verbose)
     env["ffmpeg"] = FFMpeg(verbose=args.verbose)
     env["output_colmap_format"] = args.output_format
@@ -282,6 +282,7 @@ if __name__ == '__main__':
 
     if lists is not None:
         with open(args.output_folder/"video_frames_for_thorough_scan.txt", "w") as f:
+            f.write("\n".join(env["existing_pictures"]) + "\n")
             f.write("\n".join(lists["thorough"]["frames"]))
         with open(args.output_folder/"georef.txt", "w") as f:
             f.write("\n".join(lists["thorough"]["georef"]))
