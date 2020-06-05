@@ -150,7 +150,7 @@ def prepare_video_workspace(video_name, video_frames_folder,
     output["viz_folder"] = converted_output_folder / "video" / relative_path_folder
     video_env["output_env"] = output
     video_env["already_localized"] = env["resume_work"] and output["model_folder"].isdir()
-    video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "groundtruth_depth" / video_name.namebase).isdir()
+    video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "ground_truth_depth" / video_name.namebase).isdir()
     return video_env
 
 
@@ -292,6 +292,7 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud")
+        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
         if args.registration_method == "simple":
             pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
                                              lidar=env["with_normals_path"],
@@ -307,11 +308,12 @@ def main():
             np.savetxt(env["matrix_path"], matrix)
 
         elif args.registration_method == "interactive":
-            input("Get transformation matrix and paste it in the file {}. When done, press ENTER".format(env["matrix_path"]))
+            input("Get transformation matrix between {0} and {1} so that we should apply it to the reconstructed point cloud to have the lidar point cloud, "
+                  "and paste it in the file {2}. When done, press ENTER".format(env["with_normals_path"], env["georefrecon_ply"], env["matrix_path"]))
     if env["matrix_path"].isfile():
         env["global_registration_matrix"] = np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
     else:
-        print("Error, no registration matrix can be found")
+        print("Error, no registration matrix can be found, identity will be used")
         env["global_registration_matrix"] = np.eye(4)
 
     if args.inspect_dataset:
@@ -325,7 +327,6 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Occlusion Mesh computing")
-        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
         pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"], env["matrix_path"],
                                  output=env["with_normals_path"], resolution=args.mesh_resolution)
         colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"])

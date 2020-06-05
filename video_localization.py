@@ -191,7 +191,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
     clean_workspace()
 
 
-def generate_GT(video_name, output_folder, images_root_folder, video_frames_folder,
+def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_folder,
                 viz_folder, kitti_format_folder, metadata, interpolated_frames_list,
                 final_model, global_registration_matrix, video_fps,
                 eth3d, colmap,
@@ -235,8 +235,8 @@ def generate_GT(video_name, output_folder, images_root_folder, video_frames_fold
     i_pv = 1
     print_step(i_pv, "Creating Ground truth data with ETH3D")
 
-    # eth3d.create_ground_truth(final_lidar, final_model, output_folder,
-    #                           final_occlusions, final_splats)
+    eth3d.create_ground_truth(final_lidar, final_model, raw_output_folder,
+                              final_occlusions, final_splats)
     viz_folder.makedirs_p()
     kitti_format_folder.makedirs_p()
 
@@ -244,9 +244,9 @@ def generate_GT(video_name, output_folder, images_root_folder, video_frames_fold
     print_step(i_pv, "Convert to KITTI format and create video with GT vizualisation")
 
     cd.convert_dataset(final_model,
-                       output_folder / "ground_truth_depth" / video_name.namebase,
+                       raw_output_folder / "ground_truth_depth" / video_name.namebase,
                        images_root_folder,
-                       output_folder / "occlusion_depth" / video_name.namebase,
+                       raw_output_folder / "occlusion_depth" / video_name.namebase,
                        kitti_format_folder, viz_folder,
                        metadata, interpolated_frames_list,
                        video=True, fps=video_fps, downscale=4, threads=8, **env)

@@ -175,7 +175,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir, dataset
     cameras = []
 
     for i in metadata["image_path"]:
-        img_path = images_root_folder / i
+        img_path = images_root_folder / Path(i).relpath("Videos")
         imgs.append(img_path)
 
         fname = img_path.basename()
