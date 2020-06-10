@@ -133,14 +133,15 @@ This will essentially do the same thing as the script, in order to let you chang
     ```
 
 
-2. Cleaning
+2. Point Cloud Cleaning
+    For each ply file :
 
     ```
     ETHD3D/build/PointCloudCleaner \
     --in /path/to/cloud_lidar.ply \
     --filter <5,10>
     ```
-    (local outliers removal, doesn't remove isolated points)
+    (local outliers removal, doesn't necessarily remove isolated points)
     or
     ```
     pcl_util/build/CloudSOR \
@@ -149,7 +150,23 @@ This will essentially do the same thing as the script, in order to let you chang
     --knn 5 --std 6
     ```
 
-3. Video frame addition to COLMAP db file
+3. Meshlab Project creation
+    ```
+    python meshlab_xml_writer.py create \
+    --input_models /path/to/cloud1 [../path/to/cloudN] \
+    --output_meshlab /path/to/lidar.mlp
+    ```
+
+    Optionally, if we have multiple lidar scans (which is not the case here), we can run a registration step with ETH3D
+
+    ```
+    ETHD3D/build/ICPScanAligner \
+    -i /path/to/lidar.mlp \
+    -o /path/to/lidar.mlp
+    --number_of_scales 5
+    ```
+
+4. Video frame addition to COLMAP db file
 
     ```
     python video_to_colmap \
@@ -174,7 +191,7 @@ This will essentially do the same thing as the script, in order to let you chang
      And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
 
 
-4. First COLMAP step : feature extraction
+5. First COLMAP step : feature extraction
 
 
     ```
@@ -204,7 +221,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_index /path/to/indexed_vocab_tree
     ```
 
-5. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
+6. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
 
     ```
     colmap exhaustive_matcher \
@@ -225,7 +242,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --SiftMatching.guided_matching 1
     ```
 
-6. Third COLMAP step : thorough mapping.
+7. Third COLMAP step : thorough mapping.
 
     ```
     mkdir -p /path/to/thorough/
@@ -250,7 +267,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_path /path/to/thorough/0
     ```
 
-7. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
+8. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
 
     ```
     mkdir -p /path/to/geo_registered_model
@@ -264,7 +281,7 @@ This will essentially do the same thing as the script, in order to let you chang
     This model will be the reference model, every further models and frames localization will be done with respect to this one.
     Even if we could, we don't run Point cloud registration right now, as the next steps will help us to have a more complete point cloud.
 
-8. Video Localization
+9. Video Localization
     All these substep will populate the db file, which is then used for matching. So you need to make a copy for each video.
 
     1. Extract all the frames of the video to same directory the `video_to_colmap.py` script exported the frame subset of this video.
@@ -408,14 +425,14 @@ This will essentially do the same thing as the script, in order to let you chang
     7. Filter the image sequence to exclude frame with an absurd acceleration and interpolate them instead
         ```
         python filter_colmap_model.py \
-        --input_images_colmap /path/to/full_video_model/images.txt \
-        --output_images_colmap /path/to/full_video_model/images.txt \
-        --metdata /path/to/images/video/dir/metadata.csv \
-        --interpolate
+        --input_images_colmap /path/to/final_model/images.txt \
+        --output_images_colmap /path/to/final_model/images.txt \
+        --metadata /path/to/images/video/dir/metadata.csv \
+        --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt
         ```
     At the end of these per-video-tasks, you should have a model at `/path/to/georef_full` with all photogrammetry images + localization of video frames at 1fps, and for each video a TXT file with positions with respect to the first geo-registered reconstruction.
 
-9. Point cloud densification
+10. Point cloud densification
 
     ```
     colmap image_undistorter \
@@ -445,7 +462,152 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will also create a `/path/to/georef_dense.ply.vis` file which describes frames from which each point is visible.
 
-10. 
+11. Point cloud registration
+    
+    Convert meshlab project to PLY with normals :
+
+    Determine the transformation to apply to `/path/to/lidar.mlp` to get to `/path/to/georef_dense.ply` so that we can have the pose of the cameras with respect to the lidar.
+
+    Option 1 : construct a meshlab project similar to `/path/to/lidar.mlp` with `/path/to/georef_dense.ply` as first mesh and run ETH3D's registration tool 
+    ```
+    python meshlab_xml_writer.py add \
+    --input_models /path/to/georef_dense.ply \
+    --start_index 0 \
+    --input_meshlab /path/to/lidar.mlp \
+    --output_meshlab /path/to/registered.mlp
+    ```
+    ```
+    ETHD3D/build/ICPScanAligner \
+    -i /path/to/registered.mlp \
+    -o /path/to/registered.mlp \
+    --number_of_scales 5
+    ```
+
+    The second matrix in `/path/to/register.mlp` will be the matrix transform from `/path/to/lidar.mlp` to `/path/to/georef_dense.ply`
+
+    Importante note : This operation doesn't work for scale adjustments which can be a problem with very large models.
+
+    Option 2 : construct a PLY file from lidar scans and register the reconstructed cloud with respect to the lidar, with PCL or CloudCompare. We do this way (and not from lidar to reconstructed), because it is usually easier to register the cloud with less points with classic ICP)
+
+    ```
+    ETHD3D/build/NormalEstimator \
+    -i /path/to/lidar.mlp \
+    -o /path/to/lidar_with_normals.ply
+    ```
+
+    ```
+    pcl_util/build/CloudRegistrator \
+    --georef /path/to/georef_dense.ply \
+    --lidar /path/to/lidar_with_normals.ply \
+    --output_matrix /path/toregistration_matrix.txt
+    ```
+
+    Note that `/path/toregistration_matrix.txt`stored the inverse of the matrix we want, so you have to invert it and save back the result.
+
+    Or use CloudCompare : https://www.cloudcompare.org/doc/wiki/index.php?title=Alignment_and_Registration
+    Best results were maintened with these consecutive steps :
+
+    - Crop the /path/georef_dense.ply cloud, otherwise the Octomap will be very inefficient, and the cloud usually has very far outliers
+    - Apply noise filtering on cropped cloud
+    - Apply fine registration, with final overlap of 50%, scale adjustment, and Enable farthest point removal
+    - save inverse of resulting registration
+
+    For the fine registration part, as said earlier, the aligned cloud is the reconstruction and the reference cloud is the lidar
+
+    finally, apply the registration matrix to `/path/to/lidar/mlp` to get `/path/to/registered.mlp`
+
+    ```
+    python meshlab_xml_writer.py transform \
+    --input_meshlab /path/to/lidar.mlp \
+    --output_meshlab /path/to/registered.mlp \
+    --transform /path/to/registration_matrix.txt
+    ```
+
+12. Occlusion Mesh generation
+
+    Use COLMAP delaunay mesher to generate a mesh from PLY + VIS.
+    Normally, COLMAP expect the cloud it generated when running the `stereo_fusion` step, but we use the lidar point cloud instead.
+
+    Get a PLY file for the registered lidar point cloud
+    
+    ```
+    ETHD3D/build/NormalEstimator \
+    -i /path/to/registered.mlp \
+    -o /path/to/lidar_with_normals.ply
+    ```
+
+    ```
+    pcl_util/build/CreateVisFile \
+    --georef_dense /path/to/georef_dense.ply \
+    --lidar lidar_with_normals.ply \
+    --output_cloud /path/to/dense/fused.ply \
+    --resolution 0.2
+    ```
+
+    This is important to place the resulting point cloud at root of COLMAP MVS workspace `/path/to/dense` that was used for generating `/path/to/georef_dense.ply` and name it `fused.ply` because it is hardwritten on COLMAP's code.
+    The file `/path/to/fused.ply.vis` will also be generated. The resolution option is used to reduce the computational load of the next step.
+
+    ```
+    colmap delaunay_mesher \
+    --input_type dense \
+    --input_path /path/to/dense \
+    --output_path /path/to/occlusion_mesh.ply
+    ```
+
+    Generate splats for lidar points outside of occlusion mesh close range. See https://github.com/ETH3D/dataset-pipeline#splat-creation
+
+    ```
+    ETH3D/build/SplatCreator \
+    --point_normal_cloud_path /path/tolidar_with_normals.ply \
+    --mesh_path /path/to/occlusion_mesh.ply \
+    --output_path /path/to/splats.ply
+    --distance_threshold 0.1
+    ```
+
+    The ideal distance threshold is what is considered close range of the occlusion mesh, and the distance from which a splat (little square surface) will be created.
+
+13. Raw Groundtruth generation
+    
+    For each video :
+
+    ```
+    ETH3D/build/GroundTruthCreator \
+    --scan_alignment_path /path/to/registered.mlp \
+    --image_base_path /path/to/images \
+    --state_path path/to/final_model \
+    --output_folder_path /path/to/raw_GT \
+    --occlusion_mesh_path /path/to/occlusion_mesh.ply \
+    --occlusion_splats_path /path/to/splats/ply \
+    --max_occlusion_depth 200 \
+    --write_point_cloud 0 \
+    --write_depth_maps 1 \
+    --write_occlusion_depth 1 \
+    --compress_depth_maps 1
+    ```
+
+    This will create for each video a folder `/path/to/raw_GT/groundtruth_depth/<video name>/` with compressed files with depth information. Option `--write_occlusion_depth` will make the folder `/path/to/raw_GT/` much heavier but is optional. It is used for inspection purpose.
+
+14. Dataset conversion
+
+    For each video :
+
+    ```
+    python convert_dataset.py \
+    --depth_dir /path/to/raw_GT/groundtruth_depth/<video name>/ \
+    --images_root_folder /path/to/images/ \
+    --occ_dir /path/to/raw_GT/occlusion_depth/<video name>/ \
+    --metadata_path /path/to/images/videos/dir/metadata.csv \
+    --dataset_output_dir /path/to/dataset/ \
+    --video_output_dir /path/to/vizualisation/ \
+    --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt \
+    --final_model /path/to/final_model/ \
+    --video \
+    --downscale 4 \
+    --threads 8
+    ```
+
+
+
 
 
 

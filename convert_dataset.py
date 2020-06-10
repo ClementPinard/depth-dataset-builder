@@ -143,17 +143,21 @@ parser = ArgumentParser(description='create a vizualisation from ground truth cr
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--depth_dir', metavar='DIR', type=Path)
-parser.add_argument('--img_dir', metavar='DIR', type=Path)
+parser.add_argument('--images_root_folder', metavar='DIR', type=Path)
 parser.add_argument('--occ_dir', metavar='DIR', type=Path)
-parser.add_argument('--metdata', type=Path)
-parser.add_argument('--output_dir', metavar='DIR', default=None, type=Path)
+parser.add_argument('--metadata_path', type=Path)
+parser.add_argument('--dataset_output_dir', metavar='DIR', default=None, type=Path)
+parser.add_argument('--video_output_dir', metavar='DIR', default=None, type=Path)
+parser.add_argument('--interpolated_frames_list', metavar='TXT', type=Path)
+parser.add_argument('--final_model', metavar='DIR', type=Path)
 parser.add_argument('--video', action='store_true')
-parser.add_argument('--fps', default='1')
 parser.add_argument('--downscale', type=int, default=1)
+parser.add_argument('--threads', type=int, default=8)
 
 
-def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir, dataset_output_dir, video_output_dir, metadata_path, interpolated_frames_path,
-                    fps, downscale, ffmpeg, threads=8, video=False, **env):
+def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
+                    dataset_output_dir, video_output_dir, metadata_path, interpolated_frames_path,
+                    downscale, ffmpeg, threads=8, video=False, **env):
     dataset_output_dir.makedirs_p()
     video_output_dir.makedirs_p()
     cameras, images, _ = rm.read_model(final_model, '.txt')
@@ -166,6 +170,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir, dataset
             interpolated_frames = [line[:-1] for line in f.readlines()]
 
     metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
+    framerate = metadata["framerate"].values[0]
     image_df = pd.DataFrame.from_dict(images, orient="index").set_index("id")
     image_df = image_df.reindex(metadata.index)
     depth_maps = []
@@ -214,7 +219,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir, dataset
     if video:
         video_path = str(video_output_dir/'{}_groundtruth_viz.mp4'.format(video_output_dir.namebase))
         glob_pattern = str(video_output_dir/'*.png')
-        ffmpeg.create_video(video_path, glob_pattern, fps)
+        ffmpeg.create_video(video_path, glob_pattern, framerate)
 
 
 if __name__ == '__main__':

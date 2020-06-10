@@ -13,9 +13,9 @@ parser = ArgumentParser(description='Take all the drone videos of a folder and p
 
 parser.add_argument('--input_images_colmap', metavar='FILE', type=Path)
 parser.add_argument('--output_images_colmap', metavar='FILE', type=Path)
-parser.add_argument('--interpolate', action="store_true")
 parser.add_argument('--metadata', metavar='FILE', type=Path)
 parser.add_argument('--visualize', action="store_true")
+parser.add_argument('--interpolated_frames_list', type=Path)
 
 
 '''
@@ -79,7 +79,7 @@ def slerp_quats(quat_df, prefix=""):
 def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path,
                         filter_degree=3, filter_time=0.1,
                         threshold_t=0.01, threshold_q=5e-3,
-                        visualize=False, max_interpolate=2, **env):
+                        visualize=False, **env):
     if input_images_colmap.ext == ".txt":
         images_dict = rm.read_images_text(input_images_colmap)
     elif input_images_colmap.ext == ".bin":
@@ -275,4 +275,6 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
-    filter_colmap_model(metadata_path=args.metadata, **env)
+    interpolated_frames = filter_colmap_model(metadata_path=args.metadata, **env)
+    with open(args.interpolated_frames_list, "w") as f:
+        f.write("\n".join(interpolated_frames) + "\n")

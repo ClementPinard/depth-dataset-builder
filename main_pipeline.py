@@ -145,7 +145,6 @@ def prepare_video_workspace(video_name, video_frames_folder,
     output["model_folder"] = raw_output_folder / "models" / relative_path_folder
     output["interpolated_frames_list"] = output["model_folder"] / "interpolated_frames.txt"
     output["final_model"] = output["model_folder"] / "final"
-    output["video_fps"] = pd.read_csv(video_env["metadata"])["framerate"].values[0]
     output["kitti_format_folder"] = converted_output_folder / "KITTI" / relative_path_folder
     output["viz_folder"] = converted_output_folder / "video" / relative_path_folder
     video_env["output_env"] = output
@@ -289,48 +288,68 @@ def main():
         colmap.dense_stereo()
         colmap.stereo_fusion(output=env["georefrecon_ply"])
 
+    def get_matrix(path):
+        if path.isfile():
+            '''Note : We use the inverse matrix here, because in general, it's easier to register the reconstructed model into the lidar one,
+            as the reconstructed will have less points, but in the end we need the matrix to apply to the lidar point to be aligned
+            with the camera positions (ie the inverse)'''
+            return np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
+        else:
+            print("Error, no registration matrix can be found, identity will be used")
+            return np.eye(4)
     i += 1
     if i not in args.skip_step:
         print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud")
-        eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
-        if args.registration_method == "simple":
-            pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
-                                             lidar=env["with_normals_path"],
-                                             output_matrix=env["matrix_path"],
-                                             max_distance=10)
-        elif args.registration_method == "eth3d":
-            temp_mlp = env["lidar_mlp"].stripext() + "_registered.mlp"
-            mxw.add_mesh_to_project(env["lidar_mlp"], temp_mlp, env["georefrecon_ply"], index=0)
-            eth3d.align_with_ICP(temp_mlp, temp_mlp, scales=5)
-            mxw.remove_mesh_from_project(temp_mlp, temp_mlp, 0)
-            print(mxw.get_mesh(temp_mlp, index=0)[0])
-            matrix = np.linalg.inv(mxw.get_mesh(temp_mlp, index=0)[0])
+        if args.registration_method == "eth3d":
+            # Note : ETH3D doesn't register with scale, this might not be suitable for very large areas
+            mxw.add_mesh_to_project(env["lidar_mlp"], env["aligned_mlp"], env["georefrecon_ply"], index=0)
+            eth3d.align_with_ICP(env["aligned_mlp"], env["aligned_mlp"], scales=5)
+            mxw.remove_mesh_from_project(env["aligned_mlp"], env["aligned_mlp"], 0)
+            print(mxw.get_mesh(env["aligned_mlp"], index=0)[0])
+            matrix = np.linalg.inv(mxw.get_mesh(env["aligned_mlp"], index=0)[0])
             np.savetxt(env["matrix_path"], matrix)
 
-        elif args.registration_method == "interactive":
-            input("Get transformation matrix between {0} and {1} so that we should apply it to the reconstructed point cloud to have the lidar point cloud, "
-                  "and paste it in the file {2}. When done, press ENTER".format(env["with_normals_path"], env["georefrecon_ply"], env["matrix_path"]))
-    if env["matrix_path"].isfile():
-        env["global_registration_matrix"] = np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
+            ''' The new mlp is supposedly better than the one before because it was an ICP
+            with N+1 models instead of just N so we replace it with the result on this scan
+            by reversing the first transformation and getting back a mlp file with identity
+            as first transform matrix'''
+            mxw.apply_transform_to_project(env["aligned_mlp"], env["lidar_mlp"], matrix)
+            env["global_registration_matrix"] = matrix
+        else:
+            eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
+            if args.registration_method == "simple":
+                pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
+                                                 lidar=env["with_normals_path"],
+                                                 output_matrix=env["matrix_path"],
+                                                 max_distance=10)
+            elif args.registration_method == "interactive":
+                input("Get transformation matrix between {0} and {1} so that we should"
+                      " apply it to the reconstructed point cloud to have the lidar point cloud, "
+                      "and paste it in the file {2}. When done, press ENTER".format(env["with_normals_path"],
+                                                                                    env["georefrecon_ply"],
+                                                                                    env["matrix_path"]))
+            env["global_registration_matrix"] = get_matrix(env["matrix_path"])
+            mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
     else:
-        print("Error, no registration matrix can be found, identity will be used")
-        env["global_registration_matrix"] = np.eye(4)
-
-    if args.inspect_dataset:
-        mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
-        mxw.create_project(env["occlusion_mlp"], [env["occlusion_ply"]], transforms=[env["global_registration_matrix"]])
-        mxw.create_project(env["splats_mlp"], [env["splats_ply"]], transforms=[env["global_registration_matrix"]])
-        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
-                              colmap_model=env["georef_recon"],
-                              image_path=env["image_path"])
+        env["global_registration_matrix"] = get_matrix(env["matrix_path"])
 
     i += 1
     if i not in args.skip_step:
         print_step(i, "Occlusion Mesh computing")
-        pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"], env["matrix_path"],
-                                 output=env["with_normals_path"], resolution=args.mesh_resolution)
+        eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_radius=args.normal_radius)
+        pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"], resolution=args.mesh_resolution)
         colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"])
         eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
+
+    if args.inspect_dataset:
+        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
+                              colmap_model=env["georef_recon"],
+                              image_path=env["image_path"])
+        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
+                              colmap_model=env["georef_recon"],
+                              image_path=env["image_path"],
+                              occlusions=env["occlusion_ply"],
+                              splats=env["splats_ply"])
 
     i += 1
     if i not in args.skip_step:
