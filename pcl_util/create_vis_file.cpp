@@ -14,28 +14,6 @@
 #include "pointcloud_subsampler.h"
 
 
-Eigen::Matrix4f readMatrix(std::string filename)
-{
-  int cols = 4, rows = 4;
-  Eigen::Matrix4f M;
-
-  std::ifstream infile;
-  infile.open(filename);
-  int row = 0;
-  while (! infile.eof() && row < 4)
-      {
-      std::string line;
-      std::getline(infile, line);
-
-      std::stringstream stream(line);
-      stream >> M(row, 0) >> M(row, 1) >> M(row, 2) >> M(row, 3);
-      row ++;
-      }
-  infile.close();
-  return M;
-};
-
-
 int main (int argc, char** argv)
 {
   FLAGS_logtostderr = 1;
@@ -56,17 +34,15 @@ int main (int argc, char** argv)
   pcl::console::parse_argument(argc, argv, "--georef_dense", georef_dense_path);
   std::string lidar_path;
   pcl::console::parse_argument(argc, argv, "--lidar", lidar_path);
-  std::string georef_matrix_path;
-  pcl::console::parse_argument(argc, argv, "--georef_matrix", georef_matrix_path);
   std::string output_cloud_path;
   pcl::console::parse_argument(argc, argv, "--output_cloud", output_cloud_path);
   float resolution = 0.2; //20cm resolution
   pcl::console::parse_argument(argc, argv, "--resolution", resolution);
 
-  if (georef_matrix_path.empty() && output_cloud_path.empty()){
+  if (output_cloud_path.empty()){
     LOG(ERROR) << "No output path was given";
     LOG(INFO) << "Usage: " << argv[0] << " --georef_dense <file.ply> --lidar <file.ply> "
-              << "--georef_matrix <matrix.txt> --output_cloud <output.ply>";
+              << "--output_cloud <output.ply>";
     return EXIT_FAILURE;
   }
   
@@ -87,13 +63,6 @@ int main (int argc, char** argv)
 
   LOG(INFO) << "Subsampling to have a mean distance between points of " << resolution << " m";
   lidar = filter<pcl::PointNormal>(lidar, resolution);
-
-  LOG(INFO) << "Loading transformation matrix ...";
-  Eigen::Matrix4f M = readMatrix(georef_matrix_path);
-  LOG(INFO) << "Matrix loaded";
-  LOG(INFO) << M;
-
-  pcl::transformPointCloudWithNormals (*lidar, *lidar, M.inverse());
 
   LOG(INFO) << "Loading georef_dense vis file...";
   const std::string input_vis_path = georef_dense_path + ".vis";

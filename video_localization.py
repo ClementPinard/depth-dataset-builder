@@ -216,8 +216,9 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         registration_matrix = global_registration_matrix
 
     mxw.apply_transform_to_project(env["lidar_mlp"], final_lidar, registration_matrix)
-    mxw.create_project(final_occlusions, [env["occlusion_ply"]], transforms=[np.eye(4)])
-    mxw.create_project(final_splats, [env["splats_ply"]], transforms=[np.eye(4)])
+    adjustment_matrix = registration_matrix * np.linalg.inv(global_registration_matrix)
+    mxw.create_project(final_occlusions, [env["occlusion_ply"]], transforms=[adjustment_matrix])
+    mxw.create_project(final_splats, [env["splats_ply"]], transforms=[adjustment_matrix])
 
     if inspect_dataset:
         eth3d.image_path = images_root_folder
@@ -225,6 +226,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         #  - inspection with reconstructed cloud
         #  - inspection with lidar cloud without occlusion
         #  - inspection with lidar cloud and occlusion models
+        # Careful, very RAM demanding for long sequences !
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
         eth3d.inspect_dataset(georef_mlp, final_model)
         eth3d.inspect_dataset(final_lidar, final_model)

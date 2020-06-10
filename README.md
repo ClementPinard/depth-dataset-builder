@@ -133,14 +133,15 @@ This will essentially do the same thing as the script, in order to let you chang
     ```
 
 
-2. Cleaning
+2. Point Cloud Cleaning
+    For each ply file :
 
     ```
     ETHD3D/build/PointCloudCleaner \
     --in /path/to/cloud_lidar.ply \
     --filter <5,10>
     ```
-    (local outliers removal, doesn't remove isolated points)
+    (local outliers removal, doesn't necessarily remove isolated points)
     or
     ```
     pcl_util/build/CloudSOR \
@@ -149,7 +150,23 @@ This will essentially do the same thing as the script, in order to let you chang
     --knn 5 --std 6
     ```
 
-3. Video frame addition to COLMAP db file
+3. Meshlab Project creation
+    ```
+    python meshlab_xml_writer.py create \
+    --input_models /path/to/cloud1 [../path/to/cloudN] \
+    --output_meshlab /path/to/lidar.mlp
+    ```
+
+    Optionally, if we have multiple lidar scans (which is not the case here), we can run a registration step with ETH3D
+
+    ```
+    ETHD3D/build/ICPScanAligner \
+    -i /path/to/lidar.mlp \
+    -o /path/to/lidar.mlp
+    --number_of_scales 5
+    ```
+
+4. Video frame addition to COLMAP db file
 
     ```
     python video_to_colmap \
@@ -174,7 +191,7 @@ This will essentially do the same thing as the script, in order to let you chang
      And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
 
 
-4. First COLMAP step : feature extraction
+5. First COLMAP step : feature extraction
 
 
     ```
@@ -204,7 +221,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_index /path/to/indexed_vocab_tree
     ```
 
-5. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
+6. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
 
     ```
     colmap exhaustive_matcher \
@@ -225,7 +242,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --SiftMatching.guided_matching 1
     ```
 
-6. Third COLMAP step : thorough mapping.
+7. Third COLMAP step : thorough mapping.
 
     ```
     mkdir -p /path/to/thorough/
@@ -250,7 +267,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_path /path/to/thorough/0
     ```
 
-7. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
+8. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
 
     ```
     mkdir -p /path/to/geo_registered_model
@@ -264,7 +281,7 @@ This will essentially do the same thing as the script, in order to let you chang
     This model will be the reference model, every further models and frames localization will be done with respect to this one.
     Even if we could, we don't run Point cloud registration right now, as the next steps will help us to have a more complete point cloud.
 
-8. Video Localization
+9. Video Localization
     All these substep will populate the db file, which is then used for matching. So you need to make a copy for each video.
 
     1. Extract all the frames of the video to same directory the `video_to_colmap.py` script exported the frame subset of this video.
@@ -415,7 +432,7 @@ This will essentially do the same thing as the script, in order to let you chang
         ```
     At the end of these per-video-tasks, you should have a model at `/path/to/georef_full` with all photogrammetry images + localization of video frames at 1fps, and for each video a TXT file with positions with respect to the first geo-registered reconstruction.
 
-9. Point cloud densification
+10. Point cloud densification
 
     ```
     colmap image_undistorter \
@@ -445,8 +462,31 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will also create a `/path/to/georef_dense.ply.vis` file which describes frames from which each point is visible.
 
-10. 
+11. Point cloud registration
+    
+    Convert meshlab project to PLY with normals :
 
+    ```
+    ETHD3D/build/NormalEstimator \
+    -i /path/to/scan_meshlab \
+    -o /path/to/with_normals.ply
+    ```
+
+    Determine the transformation to apply to `/path/to/georef_dense.ply` to get to `/path/to/with_normals.ply` and save the corresponding transformation matrix to `/path/to/matrix.txt`
+
+    Option 1 : construct a meshlab project similar to `/path/to/lidar.mlp` with `/path/to/georef_dense.ply` as first mesh and run ETH3D's registration tool 
+    ```
+    python meshlab_xml_writer.py add \
+    --input_models /path/to/georef_dense.ply \
+    --input_meshlab /path/to/lidar.mlp \
+    --output_meshlab /path/to/register.mlp
+    ```
+    ```
+    ETHD3D/build/ICPScanAligner \
+    -i /path/to/register.mlp \
+    -o /path/to/register.mlp \
+    --number_of_scales 5
+    ```
 
 
 
