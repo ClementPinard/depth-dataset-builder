@@ -184,7 +184,6 @@ This will essentially do the same thing as the script, in order to let you chang
 
     The video to colmap step will populate the scan db with new entries with the right camera parameters. And select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
     It will also create several txt files with list of file paths :
-
      - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry
      - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file.
 
