@@ -39,8 +39,9 @@ def extract_sky_mask(network, image_paths, mask_folder):
     image_tensor = torch.from_numpy(images).float()/255
     image_tensor = image_tensor.permute(0, 3, 1, 2)  # shape [B, C, H, W]
 
-    scale_factor = 512/image_tensor.shape[3]
-    reduced = F.interpolate(image_tensor, scale_factor=scale_factor, mode='area')
+    w_r = 512
+    h_r = int(512 * h / w)
+    reduced = F.interpolate(image_tensor, size=(h_r, w_r), mode='area')
 
     result = network(reduced.cuda())
     classes = torch.max(result, 1)[1]

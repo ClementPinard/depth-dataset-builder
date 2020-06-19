@@ -19,7 +19,7 @@ def extrapolate_position(speeds, timestamps, initial_position, final_position):
         return trapz + interp
 
 
-def preprocess_metadata(metadata, proj, centroid):
+def preprocess_metadata(metadata, proj):
     def lambda_fun(x):
         return pd.Series(proj(*x), index=["x", "y"])
     position_xy = metadata[["location_longitude", "location_latitude"]].apply(lambda_fun, axis=1)
@@ -57,17 +57,16 @@ def preprocess_metadata(metadata, proj, centroid):
 
             for start, end in zip(invalidity_start, validity_start):
                 positions[start:end] = extrapolate_position(speed[start:end], timestamps[start:end], positions[start], positions[end])
-        positions -= centroid
 
     metadata["x"], metadata["y"], metadata["z"] = positions.transpose()
 
     return metadata
 
 
-def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, centroid, save_path=None):
+def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, save_path=None):
     metadata = native_wrapper.vmeta_extract(file_path)
     metadata = metadata.iloc[:-1]
-    metadata = preprocess_metadata(metadata, proj, centroid)
+    metadata = preprocess_metadata(metadata, proj)
     video_quality = h * w / f
     metadata["video_quality"] = video_quality
     metadata["height"] = h

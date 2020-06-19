@@ -50,7 +50,7 @@ def get_mesh(input_mlp, index):
     return transform, filepath
 
 
-def add_mesh_to_project(input_mlp, output_mlp, model_paths, labels=None, transforms=None, start_index=-1):
+def add_meshes_to_project(input_mlp, output_mlp, model_paths, labels=None, transforms=None, start_index=-1):
     if labels is not None:
         assert(len(model_paths) == len(labels))
     else:
@@ -134,12 +134,12 @@ if __name__ == '__main__':
         if args.operation == "create":
             create_project(args.output_meshlab, args.input_models, args.labels, transforms)
         if args.operation == "add":
-            add_mesh_to_project(args.input_meshlab,
-                                args.output_meshlab,
-                                args.input_models,
-                                args.labels,
-                                transforms,
-                                args.start_index)
+            add_meshes_to_project(args.input_meshlab,
+                                  args.output_meshlab,
+                                  args.input_models,
+                                  args.labels,
+                                  transforms,
+                                  args.start_index)
     if args.operation == "remove":
         matrix, filename = remove_mesh_from_project(args.input_meshlab, args.output_meshlab, args.index)
         print("Removed model {} with transform\n {} \nfrom meshlab".format(filename, matrix))

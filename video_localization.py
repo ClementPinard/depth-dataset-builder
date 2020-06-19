@@ -57,17 +57,17 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
                    chunk_image_list_paths, chunk_dbs,
                    colmap_models_root, full_model, lowfps_model, chunk_models, final_model,
                    output_env, eth3d, colmap, ffmpeg, pcl_util,
-                   video_index=None, num_videos=None, already_localized=False, filter_model=True,
+                   step_index=None, video_index=None, num_videos=None, already_localized=False, filter_model=True,
                    save_space=False, triangulate=False, **env):
 
     def print_step_pv(step_number, step_name):
-        if video_index is not None and num_videos is not None:
+        if step_index is not None and video_index is not None and num_videos is not None:
             progress = "{}/{}".format(video_index, num_videos)
-            substep = ".{}".format(video_index)
+            substep = "{}.{}".format(step_index, video_index)
         else:
             progress = ""
             substep = ""
-        print_step("6{}.{}".format(substep, step_number),
+        print_step("{}.{}".format(substep, step_number),
                    "[Video {}, {}] \n {}".format(video_name.basename(),
                                                  progress,
                                                  step_name))
@@ -115,6 +115,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
     lowfps_model.makedirs_p()
     colmap.map(output=lowfps_model, input=env["georef_recon"])
     if not is_video_in_model(video_name, lowfps_model, metadata):
+        print("Error, video was not localized")
         error_empty()
         clean_workspace()
         return
@@ -193,7 +194,8 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
 
 def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_folder,
                 viz_folder, kitti_format_folder, metadata, interpolated_frames_list,
-                final_model, global_registration_matrix,
+                final_model, aligned_mlp, global_registration_matrix,
+                occlusion_ply, splats_ply,
                 eth3d, colmap,
                 video_index=None, num_videos=None, GT_already_done=False,
                 save_space=False, inspect_dataset=False, **env):
@@ -206,19 +208,26 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     if model_length < 2:
         return
 
-    final_lidar = final_model / "aligned_lidar.mlp"
+    final_mlp = final_model / "aligned.mlp"
     final_occlusions = final_model / "occlusions.mlp"
     final_splats = final_model / "splats.mlp"
+
+    '''
+    In case the reconstructed model is only locally good, there's the possibility of having a specific
+    transformation matrix per video in the final model folder, which might work better than the the global registration_matrix
+    '''
     specific_matrix_path = final_model / "matrix.txt"
     if specific_matrix_path.isfile():
         registration_matrix = np.linalg.inv(np.fromfile(specific_matrix_path, sep=" ").reshape(4, 4))
-    else:
-        registration_matrix = global_registration_matrix
+        adjustment_matrix = registration_matrix * np.linalg.inv(global_registration_matrix)
+        mxw.apply_transform_to_project(aligned_mlp, final_mlp, adjustment_matrix)
+        mxw.create_project(final_occlusions, [occlusion_ply], transforms=[adjustment_matrix])
+        mxw.create_project(final_splats, [splats_ply], transforms=[adjustment_matrix])
 
-    mxw.apply_transform_to_project(env["lidar_mlp"], final_lidar, registration_matrix)
-    adjustment_matrix = registration_matrix * np.linalg.inv(global_registration_matrix)
-    mxw.create_project(final_occlusions, [env["occlusion_ply"]], transforms=[adjustment_matrix])
-    mxw.create_project(final_splats, [env["splats_ply"]], transforms=[adjustment_matrix])
+    else:
+        final_mlp = aligned_mlp
+        final_occlusions = occlusion_ply
+        final_splats = splats_ply
 
     if inspect_dataset:
         eth3d.image_path = images_root_folder
@@ -229,15 +238,15 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         # Careful, very RAM demanding for long sequences !
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
         eth3d.inspect_dataset(georef_mlp, final_model)
-        eth3d.inspect_dataset(final_lidar, final_model)
-        eth3d.inspect_dataset(final_lidar, final_model,
+        eth3d.inspect_dataset(final_mlp, final_model)
+        eth3d.inspect_dataset(final_mlp, final_model,
                               final_occlusions, final_splats)
 
     print("Creating GT on video {} [{}/{}]".format(video_name.basename(), video_index, num_videos))
     i_pv = 1
     print_step(i_pv, "Creating Ground truth data with ETH3D")
 
-    eth3d.create_ground_truth(final_lidar, final_model, raw_output_folder,
+    eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
                               final_occlusions, final_splats)
     viz_folder.makedirs_p()
     kitti_format_folder.makedirs_p()

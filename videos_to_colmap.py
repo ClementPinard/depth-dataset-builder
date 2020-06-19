@@ -144,10 +144,18 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         video_output_folders[v] = video_output_folder
 
         metadata = am.extract_metadata(v.parent, v, env["pdraw"], proj,
-                                       width, height, framerate, centroid)
+                                       width, height, framerate)
         final_metadata.append(metadata)
         if metadata["indoor"].iloc[0]:
             indoor_videos.append(v)
+        else:
+            raw_positions = metadata[["x", "y", "z"]]
+            if centroid is None:
+                '''No centroid (possibly because there was no georeferenced lidar model in the first place)
+                set it as the first valid GPS position of the first outdoor video'''
+                centroid = raw_positions[metadata["location_valid"] == 1].iloc[0].values
+            zero_centered_positions = raw_positions.values - centroid
+            metadata["x"], metadata["y"], metadata["z"] = zero_centered_positions.transpose()
     final_metadata = pd.concat(final_metadata, ignore_index=True)
     print("{} outdoor videos".format(len(videos_list) - len(indoor_videos)))
     print("{} indoor videos".format(len(indoor_videos)))
@@ -265,10 +273,9 @@ if __name__ == '__main__':
     env["videos_list"] = sum((list(args.video_folder.walkfiles('*{}'.format(ext))) for ext in args.vid_ext), [])
     output_video_folder = args.colmap_img_root / "Videos"
     output_video_folder.makedirs_p()
-    env["image_path"] = args.output_folder
+    env["image_path"] = args.colmap_img_root
     env["output_video_folder"] = output_video_folder
-    existing_pictures = sum((list(args.output_folder.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
-    env["existing_pictures"] = [p.relpath(args.colmap_img_root) for p in existing_pictures]
+    env["existing_pictures"] = sum((list(args.colmap_img_root.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
     env["pdraw"] = PDraw(args.nw, verbose=args.verbose)
     env["ffmpeg"] = FFMpeg(verbose=args.verbose)
     env["output_colmap_format"] = args.output_format
@@ -281,10 +288,9 @@ if __name__ == '__main__':
     lists, extracted_video_folders = process_video_folder(**env)
 
     if lists is not None:
-        with open(args.output_folder/"video_frames_for_thorough_scan.txt", "w") as f:
-            f.write("\n".join(env["existing_pictures"]) + "\n")
-            f.write("\n".join(lists["thorough"]["frames"]))
-        with open(args.output_folder/"georef.txt", "w") as f:
+        with open(args.colmap_img_root/"video_frames_for_thorough_scan.txt", "w") as f:
+            f.write("\n".join(lists["thorough"]["frames"]) + "\n")
+        with open(args.colmap_img_root/"georef.txt", "w") as f:
             f.write("\n".join(lists["thorough"]["georef"]))
         for v in env["videos_list"]:
             video_folder = extracted_video_folders[v]

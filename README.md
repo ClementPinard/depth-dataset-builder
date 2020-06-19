@@ -166,32 +166,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --number_of_scales 5
     ```
 
-4. Video frame addition to COLMAP db file
-
-    ```
-    python video_to_colmap \
-    --video_folder /path/to/videos \
-    --system epsg:2154 \
-    --centroid_path /path/to/centroid.txt \
-    --output_folder /path/to/pictures/videos \
-    --nw /path/to/anafi/native-wrapper.sh \
-    --fps 1 \
-    --total_frames 1000 \
-    --save_space \
-    --thorough_db /path/to/scan.db
-
-    ```
-
-    The video to colmap step will populate the scan db with new entries with the right camera parameters. And select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
-    It will also create several txt files with list of file paths :
-     - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry
-     - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file.
-
-     And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
-
-
-5. First COLMAP step : feature extraction
-
+4. First COLMAP step (divided in two parts) : feature extraction for photogrammetry frames
 
     ```
     python generate_sky_masks.py \
@@ -205,10 +180,55 @@ This will essentially do the same thing as the script, in order to let you chang
     colmap feature_extractor \
     --database_path /path/to/scan.db \
     --image_path /path/to/images \
-    --image_list_path /path/to/images/video_frames_for_thorough_scan.txt
     --ImageReader.mask_path Path/to/images_mask/ \
     --ImageReader.camera_model RADIAL \
     --ImageReader.single_camera_per_folder 1 \
+    ```
+
+    We don't need to extract features before having video frames, but this will populate the `/path/to/scan.db` file with the photogrammetry pictures and corresponding id that will be reserved for future version of the file. Besides, it automatically set a camera per folder too.
+
+5. Video frame addition to COLMAP db file
+
+    ```
+    python video_to_colmap \
+    --video_folder /path/to/videos \
+    --system epsg:2154 \
+    --centroid_path /path/to/centroid.txt \
+    --output_folder /path/to/pictures/videos \
+    --nw /path/to/anafi/native-wrapper.sh \
+    --fps 1 \
+    --total_frames 1000 \
+    --save_space \
+    --thorough_db /path/to/scan.db
+    ```
+
+    The video to colmap step will populate the scan db with new entries with the right camera parameters. And select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
+    It will also create several txt files with list of file paths :
+     - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry
+     - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file.
+
+    And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
+
+
+6. Second part of first COLMAP step : feature extraction for video frames used for thorough photogrammetry
+
+
+    ```
+    python generate_sky_masks.py \
+    --img_dir /path/to/images \
+    --colmap_img_root /path/to/images \
+    --maskroot /path/to/images_mask \
+    --batch_size 8
+    ```
+
+    (this is the same command as step 4)
+
+    ```
+    colmap feature_extractor \
+    --database_path /path/to/scan.db \
+    --image_path /path/to/images \
+    --image_list_path /path/to/images/video_frames_for_thorough_scan.txt
+    --ImageReader.mask_path Path/to/images_mask/ \
     ```
 
     We also recommand you make your own vocab_tree with image indexes, this will make the next matching steps faster.
@@ -220,7 +240,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_index /path/to/indexed_vocab_tree
     ```
 
-6. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
+7. Second COLMAP step : matching. For less than 1000 images, you can use exhaustive matching (this will take around 2hours). If there is too much images, you can use either spatial matching or vocab tree matching
 
     ```
     colmap exhaustive_matcher \
@@ -241,7 +261,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --SiftMatching.guided_matching 1
     ```
 
-7. Third COLMAP step : thorough mapping.
+8. Third COLMAP step : thorough mapping.
 
     ```
     mkdir -p /path/to/thorough/
@@ -266,7 +286,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_path /path/to/thorough/0
     ```
 
-8. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
+9. Fourth COLMAP step : [georeferencing](https://colmap.github.io/faq.html#geo-registration)
 
     ```
     mkdir -p /path/to/geo_registered_model
@@ -280,7 +300,7 @@ This will essentially do the same thing as the script, in order to let you chang
     This model will be the reference model, every further models and frames localization will be done with respect to this one.
     Even if we could, we don't run Point cloud registration right now, as the next steps will help us to have a more complete point cloud.
 
-9. Video Localization
+10. Video Localization
     All these substep will populate the db file, which is then used for matching. So you need to make a copy for each video.
 
     1. Extract all the frames of the video to same directory the `video_to_colmap.py` script exported the frame subset of this video.
@@ -431,7 +451,7 @@ This will essentially do the same thing as the script, in order to let you chang
         ```
     At the end of these per-video-tasks, you should have a model at `/path/to/georef_full` with all photogrammetry images + localization of video frames at 1fps, and for each video a TXT file with positions with respect to the first geo-registered reconstruction.
 
-10. Point cloud densification
+11. Point cloud densification
 
     ```
     colmap image_undistorter \
@@ -461,7 +481,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will also create a `/path/to/georef_dense.ply.vis` file which describes frames from which each point is visible.
 
-11. Point cloud registration
+12. Point cloud registration
     
     Convert meshlab project to PLY with normals :
 
@@ -522,7 +542,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --transform /path/to/registration_matrix.txt
     ```
 
-12. Occlusion Mesh generation
+13. Occlusion Mesh generation
 
     Use COLMAP delaunay mesher to generate a mesh from PLY + VIS.
     Normally, COLMAP expect the cloud it generated when running the `stereo_fusion` step, but we use the lidar point cloud instead.
@@ -565,7 +585,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     The ideal distance threshold is what is considered close range of the occlusion mesh, and the distance from which a splat (little square surface) will be created.
 
-13. Raw Groundtruth generation
+14. Raw Groundtruth generation
     
     For each video :
 
@@ -586,7 +606,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will create for each video a folder `/path/to/raw_GT/groundtruth_depth/<video name>/` with compressed files with depth information. Option `--write_occlusion_depth` will make the folder `/path/to/raw_GT/` much heavier but is optional. It is used for inspection purpose.
 
-14. Dataset conversion
+15. Dataset conversion
 
     For each video :
 
@@ -604,9 +624,3 @@ This will essentially do the same thing as the script, in order to let you chang
     --downscale 4 \
     --threads 8
     ```
-
-
-
-
-
-

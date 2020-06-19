@@ -29,13 +29,17 @@ class PCLUtil(Wrapper):
             options += ["--output_cloud", output_cloud]
         self.__call__(options)
 
-    def filter_cloud(self, output_file, input_file, knn=6, std=5):
+    def filter_cloud(self, output_file, input_file, knn=6, std=5, with_normals=False):
         options = ["CloudSOR", "--input", input_file,
                    "--output", output_file, "--knn", str(knn),
                    "--std", str(std)]
+        if with_normals:
+            options.append("-n")
         self.__call__(options)
 
-    def create_vis_file(self, georef_dense, lidar, output, resolution):
+    def create_vis_file(self, georef_dense, lidar, resolution=0.1, output=None):
+        if output is None:
+            output = lidar
         options = ["CreateVisFile", "--georef_dense", georef_dense,
                    "--lidar", lidar,
                    "--output_cloud", output, "--resolution", str(resolution)]

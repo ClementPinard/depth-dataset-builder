@@ -36,7 +36,8 @@ class ETH3D(Wrapper):
         options = ["SplatCreator", "--point_normal_cloud_path", pointnormals_ply,
                    "--mesh_path", occlusion_ply,
                    "--output_path", output_splats,
-                   "--distance_threshold", str(threshold)]
+                   "--distance_threshold", str(threshold),
+                   "--max_splat_size", str(2.5 * threshold)]
         self.__call__(options)
 
     def create_ground_truth(self, scan_meshlab, colmap_model, output_folder, occlusions=None, splats=None,
