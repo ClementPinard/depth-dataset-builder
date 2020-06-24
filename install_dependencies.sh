@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This scrip helps you install the necessary tools to construct a depth enabled dataset with Anafi videos
+# Note that CUDA needs to be already installed
+
 sudo apt update
 sudo apt install -y git \
     repo \
@@ -29,7 +32,7 @@ sudo apt install -y git \
     libsuitesparse-dev \
     zlib1g-dev \
     libglfw3-dev \
-    libsdl2-dev \rsync
+    libsdl2-dev rsync
 
 git clone https://github.com/laurentkneip/opengv.git
 cd opengv \
@@ -76,9 +79,15 @@ cd colmap \
   && cmake .. \
   && make -j8
 sudo make install
+cd ../../
 
 mkdir -p groundsdk \
   && cd groundsdk \
   && repo init -u https://github.com/Parrot-Developers/groundsdk-manifest -m release.xml \
   && repo sync \
-  && ./build.sh -p pdraw-linux -t build -j/1
+  && ./build.sh -p pdraw-linux -t build -j8
+cd ../
+
+pip install -r requirements.txt
+
+./build_pcl.sh
