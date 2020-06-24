@@ -6,7 +6,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/registration/transformation_estimation_svd_scale.h>
 #include <pcl/filters/statistical_outlier_removal.h>
-#include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 #include <pcl/io/ply_io.h>
 
 
@@ -70,7 +70,7 @@ int main (int argc, char** argv)
 
 
   // Normal estimation*
-  pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+  pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> n;
   pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
   pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
   tree->setInputCloud (georef);

@@ -28,7 +28,7 @@ class ETH3D(Wrapper):
         options = ["NormalEstimator", "-i", scan_meshlab, "-o", output_ply]
         if neighbor_count is not None:
             options += ["--neighbor_count", str(neighbor_count)]
-        if neighbor_radius is not None:
+        elif neighbor_radius is not None:
             options += ["--neighbor_radius", str(neighbor_radius)]
         self.__call__(options)
 

@@ -176,7 +176,6 @@ def main():
             mxw.add_meshes_to_project(env["lidar_mlp"], env["aligned_mlp"], [env["georefrecon_ply"]], start_index=0)
             eth3d.align_with_ICP(env["aligned_mlp"], env["aligned_mlp"], scales=5)
             mxw.remove_mesh_from_project(env["aligned_mlp"], env["aligned_mlp"], 0)
-            print(mxw.get_mesh(env["aligned_mlp"], index=0)[0])
             matrix = np.linalg.inv(mxw.get_mesh(env["aligned_mlp"], index=0)[0])
             np.savetxt(env["matrix_path"], matrix)
 
@@ -187,7 +186,10 @@ def main():
             mxw.apply_transform_to_project(env["aligned_mlp"], env["lidar_mlp"], matrix)
             env["global_registration_matrix"] = matrix
         else:
-            eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normal_radius)
+            if args.normals_method == "radius":
+                eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_radius=args.normals_radius)
+            else:
+                eth3d.compute_normals(env["with_normals_path"], env["lidar_mlp"], neighbor_count=args.normals_neighbours)
             if args.registration_method == "simple":
                 pcl_util.register_reconstruction(georef=env["georefrecon_ply"],
                                                  lidar=env["with_normals_path"],
@@ -207,9 +209,13 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Occlusion Mesh computing")
-        eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_radius=args.normal_radius)
-        pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"], resolution=args.mesh_resolution)
-        colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"])
+        if args.normals_method == "radius":
+            eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_radius=args.normals_radius)
+        else:
+            eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_count=args.normals_neighbours)
+        pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"],
+                                 resolution=args.mesh_resolution, output=env["with_normals_path"].stripext() + "_subsampled.ply")
+        colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"].stripext() + "_subsampled.ply")
         eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
 
     if args.inspect_dataset:
