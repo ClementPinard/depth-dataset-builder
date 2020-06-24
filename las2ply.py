@@ -1,3 +1,4 @@
+import laspy
 from pyntcloud import PyntCloud
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
@@ -19,8 +20,15 @@ def load_and_convert(input_file, output_folder, verbose=False):
     output_folder.makedirs_p()
     ply_path = output_folder / input_file.namebase + '.ply'
     txt_path = output_folder / input_file.namebase + '_centroid.txt'
-    cloud = PyntCloud.from_file(input_file)
     file_type = input_file.ext[1:].upper()
+    if file_type == "LAS":
+        offset = np.array(laspy.file.File(input_file, mode="r").header.offset)
+    else:
+        offset = np.zeros(3)
+    cloud = PyntCloud.from_file(input_file)
+    xyz = cloud.points[['x', 'y', 'z']]
+    cloud.points = xyz + offset
+
     if verbose:
         print("{} file with {:,} points "
               "(centroid : [{:.2f}, {:.2f}, {:.2f}] in km) "
@@ -31,8 +39,6 @@ def load_and_convert(input_file, output_folder, verbose=False):
     output_centroid = cloud.centroid
     np.savetxt(txt_path, output_centroid)
 
-    xyz = cloud.points[['x', 'y', 'z']]
-    cloud.points = xyz
     cloud.points -= cloud.centroid
 
     cloud.to_file(ply_path)
