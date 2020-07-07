@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+set(CMAKE_CXX_STANDARD 14)
 
 project(Parrot_photogrammetry_PCLutils)
 
 find_package(PCL REQUIRED)
 find_package(COLMAP REQUIRED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fopenmp")
 
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})

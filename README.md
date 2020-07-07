@@ -18,7 +18,9 @@ Apart from CUDA, which you need to install by yourself, you can use the help scr
 
 For PDrAW, there should be a `native-wrapper.sh` file that you to keep a track of. It's usually in `groundsdk/out/pdraw-linux/staging/native-wrapper.sh`(see [here](https://developer.parrot.com/docs/pdraw/installation.html))
 
-## Hardaware dependecies
+For COLMAP, you will need a vocab tree for feature matching. You can download them at https://demuc.de/colmap/#download . In our tests, we took the 256K version.
+
+## Hardware dependecies
 
 To recreate the results of the study, you will need these hardware pieces :
  - Parrot Anafi
@@ -106,10 +108,10 @@ Here are the key steps of the dataset creation :
 Structure your input folder so that it looks like this:
 ```
 ├── Pictures
-│   ├── anafi
-│   │   ├── raw
-│   │   ├── rectilinear
-│   └── apn
+│   ├── anafi
+│   │   ├── raw
+│   │   ├── rectilinear
+│   └── apn
 ├── Videos
 │   ├── 4K30
 │   └── 720p120
@@ -231,7 +233,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --ImageReader.mask_path Path/to/images_mask/ \
     ```
 
-    We also recommand you make your own vocab_tree with image indexes, this will make the next matching steps faster.
+    We also recommand you make your own vocab_tree with image indexes, this will make the next matching steps faster. You can download a vocab_tree at https://demuc.de/colmap/#download : We took the 256K version in our tests.
 
     ```
     colmap vocab_tree_retriever \
@@ -507,7 +509,6 @@ This will essentially do the same thing as the script, in order to let you chang
     Importante note : This operation doesn't work for scale adjustments which can be a problem with very large models.
 
     Option 2 : construct a PLY file from lidar scans and register the reconstructed cloud with respect to the lidar, with PCL or CloudCompare. We do this way (and not from lidar to reconstructed), because it is usually easier to register the cloud with less points with classic ICP)
-
     ```
     ETHD3D/build/NormalEstimator \
     -i /path/to/lidar.mlp \
@@ -525,11 +526,10 @@ This will essentially do the same thing as the script, in order to let you chang
 
     Or use CloudCompare : https://www.cloudcompare.org/doc/wiki/index.php?title=Alignment_and_Registration
     Best results were maintened with these consecutive steps :
-
     - Crop the /path/georef_dense.ply cloud, otherwise the Octomap will be very inefficient, and the cloud usually has very far outliers
     - Apply noise filtering on cropped cloud
     - Apply fine registration, with final overlap of 50%, scale adjustment, and Enable farthest point removal
-    - save inverse of resulting registration
+    - Save inverse of resulting registration
 
     For the fine registration part, as said earlier, the aligned cloud is the reconstruction and the reference cloud is the lidar
 
