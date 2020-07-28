@@ -23,11 +23,17 @@ def load_and_convert(input_file, output_folder, verbose=False):
     file_type = input_file.ext[1:].upper()
     if file_type == "LAS":
         offset = np.array(laspy.file.File(input_file, mode="r").header.offset)
+        print(offset)
     else:
         offset = np.zeros(3)
     cloud = PyntCloud.from_file(input_file)
-    xyz = cloud.points[['x', 'y', 'z']]
-    cloud.points = xyz + offset
+    print(cloud.points)
+
+    points = cloud.points
+    xyz = points[['x', 'y', 'z']]
+    xyz += offset
+    points[['x', 'y', 'z']] = xyz
+    cloud.points = points
 
     if verbose:
         print("{} file with {:,} points "
@@ -39,7 +45,14 @@ def load_and_convert(input_file, output_folder, verbose=False):
     output_centroid = cloud.centroid
     np.savetxt(txt_path, output_centroid)
 
-    cloud.points -= cloud.centroid
+    points = cloud.points
+    xyz = points[['x', 'y', 'z']]
+    xyz -= cloud.centroid
+    points[['x', 'y', 'z']] = xyz
+    if (all([c in points.keys() for c in ["red", "green", "blue"]])):
+        points[['red', 'green', 'blue']] = (points[['red', 'green', 'blue']] / 255).astype(np.uint8)
+        invalid_color = (points["red"] > 250) & (points["green"] > 250) & (points["blue"] > 250)
+        cloud.points = points[["x", "y", "z", "red", "green", "blue"]][~invalid_color]
 
     cloud.to_file(ply_path)
     if verbose:

@@ -17,7 +17,7 @@ main (int argc, char** argv)
   if (argc <= 1 ||
       pcl::console::parse_argument(argc, argv, "-h", dummy) >= 0 ||
       pcl::console::parse_argument(argc, argv, "--help", dummy) >= 0) {
-    LOG(INFO) << "Usage: " << argv[0] << " --point_cloud_path <file.ply> --resolution <m> --out_mesh <file.ply>";
+    LOG(INFO) << "Usage: " << argv[0] << " --point_cloud_path <file.ply> --resolution <m> --output <file.ply>";
     return EXIT_FAILURE;
   }
   
@@ -30,7 +30,7 @@ main (int argc, char** argv)
 
   if (output_path.empty()){
     LOG(ERROR) << "No output path was given";
-    LOG(INFO) << "Usage: " << argv[0] << " --point_cloud_path <file.ply> --resolution <m> --out_mesh <file.ply>";
+    LOG(INFO) << "Usage: " << argv[0] << " --point_cloud_path <file.ply> --resolution <m> --output <file.ply>";
     return EXIT_FAILURE;
   }
   

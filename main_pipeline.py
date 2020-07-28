@@ -122,7 +122,7 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Alignment of photogrammetric reconstruction with GPS")
-
+        env["georef_recon"].makedirs_p()
         colmap.align_model(output=env["georef_recon"],
                            input=env["thorough_recon"] / "0",
                            ref_images=env["georef_frames_list"])
@@ -148,6 +148,7 @@ def main():
             localize_video(video_name=v,
                            video_frames_folder=env["videos_frames_folders"][v],
                            video_index=j+1,
+                           step_index=i,
                            num_videos=len(env["videos_to_localize"]),
                            **video_env, **env)
 

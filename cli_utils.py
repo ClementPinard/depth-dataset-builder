@@ -43,6 +43,8 @@ def set_argparser():
     ve_parser.add_argument('--system', default="epsg:2154")
     ve_parser.add_argument('--lowfps', default=1, type=int)
     ve_parser.add_argument('--max_sequence_length', default=4000, type=int)
+    ve_parser.add_argument('--include_lowfps_thorough', action='store_true',
+                           help="if selected, will include videos frames at lowfps for thorough scan (longer)")
 
     exec_parser = parser.add_argument_group("Executable files")
     exec_parser.add_argument('--log', default=None, type=Path)

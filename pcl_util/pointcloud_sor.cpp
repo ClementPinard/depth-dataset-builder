@@ -56,6 +56,7 @@ int main (int argc, char** argv)
   float std = 1;
   pcl::console::parse_argument(argc, argv, "--std", std);
   bool with_normals = pcl::console::find_switch(argc, argv, "-n");
+  bool with_colors = pcl::console::find_switch(argc, argv, "-c");
 
   if (output_path.empty()){
     LOG(ERROR) << "No output path was given";
@@ -65,9 +66,17 @@ int main (int argc, char** argv)
   }
   
   if(with_normals){
-    return sor<pcl::PointNormal>(input_path, output_path, knn, std);
+    if(with_colors){
+      return sor<pcl::PointXYZRGBNormal>(input_path, output_path, knn, std);
+    }else{
+      return sor<pcl::PointNormal>(input_path, output_path, knn, std);
+    }
   }else{
-    return sor<pcl::PointXYZ>(input_path, output_path, knn, std);
+    if (with_colors){
+      return sor<pcl::PointXYZRGB>(input_path, output_path, knn, std);
+    }else{
+      return sor<pcl::PointXYZ>(input_path, output_path, knn, std);
+    }
   }
   
 }

@@ -18,10 +18,10 @@ def save_intrinsics(cameras, images, output_dir, downscale=1):
     def construct_intrinsics(cam):
         assert('PINHOLE' in cam.model)
         if 'SIMPLE' in cam.model:
-            fx, cx, cy = cam.params
+            fx, cx, cy, *_ = cam.params
             fy = fx
         else:
-            fx, fy, cx, cy = cam.params
+            fx, fy, cx, cy, *_ = cam.params
 
         return np.array([[fx / downscale, 0, cx / downscale],
                          [0, fy / downscale, cy / downscale],

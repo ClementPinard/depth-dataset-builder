@@ -41,11 +41,17 @@ class FFMpeg(Wrapper):
         return sorted(output_folder.files("*.jpg"))
 
     def get_size_and_framerate(self, video_file):
-        probe_process = Popen([self.probe, "-show_entries", "stream=height,width,r_frame_rate",
-                               "-of", "json", "-select_streams", "v:0", str(video_file)],
+        probe_process = Popen([self.probe, "-show_entries", "stream=height,width,r_frame_rate,nb_frames",
+                               "-of", "json", "-select_streams", "v", str(video_file)],
                               stdout=PIPE, stderr=PIPE)
-        json_cam = json.loads(probe_process.communicate()[0])['streams'][0]
-        return int(json_cam["width"]), int(json_cam["height"]), frac_to_float(json_cam["r_frame_rate"])
+        json_cam = json.loads(probe_process.communicate()[0])['streams']
+        if len(json_cam) > 1:
+            print("Warning for video {0} : Multiple streams detected ({1}), only the first one will be considered, "
+                  "please split the file into {1} separate mp4 files to analyze everything".format(video_file.basename(), len(json_cam)))
+        return (int(json_cam[0]["width"]),
+                int(json_cam[0]["height"]),
+                frac_to_float(json_cam[0]["r_frame_rate"]),
+                int(json_cam[0]["nb_frames"]))
 
     def create_video(self, video_path, glob_pattern, fps=30):
         ffmpeg_options = ["-y", "-r", str(fps),

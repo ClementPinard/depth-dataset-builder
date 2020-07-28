@@ -59,10 +59,11 @@ def set_gps(frames_list, metadata, image_path):
         row = metadata[metadata["image_path"] == relative]
         if len(row) > 0:
             row = row.iloc[0]
-            set_gps_location(frame,
-                             lat=row["location_latitude"],
-                             lng=row["location_longitude"],
-                             altitude=row["location_altitude"])
+            if row["location_valid"]:
+                set_gps_location(frame,
+                                 lat=row["location_latitude"],
+                                 lng=row["location_longitude"],
+                                 altitude=row["location_altitude"])
 
 
 def get_georef(metadata):
@@ -77,18 +78,21 @@ def get_georef(metadata):
 
 
 def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
-    metadata["sampled"] = False
-    XYZ = metadata[["x", "y", "z"]].values
-    axis_angle = metadata[["frame_quat_x", "frame_quat_y", "frame_quat_z"]].values
-    if True in metadata["indoor"].unique():
+    valid_metadata = metadata[~metadata["sampled"]].dropna()
+    XYZ = valid_metadata[["x", "y", "z"]].values
+    axis_angle = valid_metadata[["frame_quat_x", "frame_quat_y", "frame_quat_z"]].values
+    if True in valid_metadata["indoor"].unique():
+        # We have indoor videos, without absolute positions. We assume each video is very far
+        # from the other ones. As such we will have an optimal subsampling of each video
+        # It won't leverage video proximity from each other but it's better than nothing
         diameter = (XYZ.max(axis=0) - XYZ.min(axis=0))
-        videos = metadata.loc[metadata["indoor"]]["video"].unique()
-        new_centroids = 2 * diameter * np.linspace(0, 10, len(videos)).reshape(-1, 1)
-        for centroid, v in zip(new_centroids, videos):
-            video_index = (metadata["video"] == v).values
+        indoor_videos = valid_metadata.loc[valid_metadata["indoor"]]["video"].unique()
+        new_centroids = 2 * diameter * np.linspace(0, 10, len(indoor_videos)).reshape(-1, 1)
+        for centroid, v in zip(new_centroids, indoor_videos):
+            video_index = (valid_metadata["video"] == v).values
             XYZ[video_index] += centroid
 
-    frame_size = metadata["video_quality"].values
+    frame_size = valid_metadata["video_quality"].values
     weighted_point_cloud = np.concatenate([XYZ, orientation_weight * axis_angle], axis=1)
 
     if resolution_weight == 0:
@@ -97,21 +101,26 @@ def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
         weights = frame_size ** resolution_weight
     km = KMeans(n_clusters=num_frames).fit(weighted_point_cloud, sample_weight=weights)
     closest, _ = pairwise_distances_argmin_min(km.cluster_centers_, weighted_point_cloud)
-    metadata.at[closest, "sampled"] = True
+    metadata.at[valid_metadata.index[closest], "sampled"] = True
     return metadata
 
 
-def register_new_cameras(cameras_dataframe, database, camera_dict, model_name="PINHOLE"):
+def register_new_cameras(cameras_dataframe, database, camera_dict):
     camera_ids = []
-    for _, (w, h, f, hfov, vfov) in cameras_dataframe.iterrows():
-        fx = w / (2 * np.tan(hfov * np.pi/360))
-        fy = h / (2 * np.tan(vfov * np.pi/360))
-        params = np.array([fx, fy, w/2, h/2])
-        model_id = rm.CAMERA_MODEL_NAMES[model_name].model_id
+    for _, (w, h, f, hfov, vfov, camera_model) in cameras_dataframe.iterrows():
+        if not (np.isnan(hfov) or np.isnan(vfov)):
+            fx = w / (2 * np.tan(hfov * np.pi/360))
+            fy = h / (2 * np.tan(vfov * np.pi/360))
+        else:
+            fx = w  # This is just a placeholder meant to be optimized
+            fy = w
+        model_id = rm.CAMERA_MODEL_NAMES[camera_model].model_id
+        num_params = rm.CAMERA_MODEL_NAMES[camera_model].num_params
+        params = np.array([fx, fy, w/2, h/2] + [0] * (num_params - 4))
         db_id = database.add_camera(model_id, w, h, params, prior_focal_length=True)
         camera_ids.append(db_id)
         camera_dict[db_id] = rm.Camera(id=db_id,
-                                       model=model_name,
+                                       model=camera_model,
                                        width=int(w),
                                        height=int(h),
                                        params=params)
@@ -121,9 +130,9 @@ def register_new_cameras(cameras_dataframe, database, camera_dict, model_name="P
 
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
                          thorough_db, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
-                         output_colmap_format="bin", save_space=False, max_sequence_length=1000, **env):
+                         output_colmap_format="bin", save_space=False, include_lowfps_thorough=False,
+                         max_sequence_length=1000, **env):
     proj = Proj(system)
-    indoor_videos = []
     final_metadata = []
     video_output_folders = {}
     images = {}
@@ -134,48 +143,95 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     path_lists_output = {}
     database = db.COLMAPDatabase.connect(thorough_db)
     database.create_tables()
-    to_extract = total_frames - len(existing_pictures)
 
     print("extracting metadata for {} videos...".format(len(videos_list)))
+    videos_summary = {"anafi": {"indoor": 0, "outdoor": 0}, "generic": 0}
     for v in tqdm(videos_list):
-        width, height, framerate = env["ffmpeg"].get_size_and_framerate(v)
+        width, height, framerate, num_frames = env["ffmpeg"].get_size_and_framerate(v)
         video_output_folder = output_video_folder / "{}x{}".format(width, height) / v.namebase
         video_output_folder.makedirs_p()
         video_output_folders[v] = video_output_folder
 
-        metadata = am.extract_metadata(v.parent, v, env["pdraw"], proj,
-                                       width, height, framerate)
-        final_metadata.append(metadata)
-        if metadata["indoor"].iloc[0]:
-            indoor_videos.append(v)
+        try:
+            metadata = am.extract_metadata(v.parent, v, env["pdraw"], proj,
+                                           width, height, framerate)
+            metadata["model"] = "anafi"
+            metadata["camera_model"] = "PINHOLE"
+            if metadata["indoor"].iloc[0]:
+                videos_summary["anafi"]["indoor"] += 1
+            else:
+                videos_summary["anafi"]["outdoor"] += 1
+                raw_positions = metadata[["x", "y", "z"]]
+                if centroid is None:
+                    '''No centroid (possibly because there was no georeferenced lidar model in the first place)
+                    set it as the first valid GPS position of the first outdoor video'''
+                    centroid = raw_positions[metadata["location_valid"] == 1].iloc[0].values
+                zero_centered_positions = raw_positions.values - centroid
+                metadata["x"], metadata["y"], metadata["z"] = zero_centered_positions.transpose()
+        except Exception:
+            # No metadata found, construct a simpler dataframe without location
+            metadata = pd.DataFrame({"video": [v] * num_frames})
+            metadata["height"] = height
+            metadata["width"] = width
+            metadata["framerate"] = framerate
+            metadata["video_quality"] = height * width / framerate
+            metadata['frame'] = metadata.index + 1
+            # timestemp is in microseconds
+            metadata['time'] = 1e6 * metadata.index / framerate
+            metadata['indoor'] = True
+            metadata['location_valid'] = 0
+            metadata["model"] = "generic"
+            metadata["camera_model"] = "OPENCV"
+            metadata["picture_hfov"] = height
+            metadata["picture_vfov"] = height
+            videos_summary["generic"] += 1
+        if include_lowfps_thorough:
+            by_time = metadata.set_index(pd.to_datetime(metadata["time"], unit="us"))
+            by_time_lowfps = by_time.resample("{:.3f}S".format(1/fps)).first()
+            metadata["sampled"] = by_time["time"].isin(by_time_lowfps["time"]).values
         else:
-            raw_positions = metadata[["x", "y", "z"]]
-            if centroid is None:
-                '''No centroid (possibly because there was no georeferenced lidar model in the first place)
-                set it as the first valid GPS position of the first outdoor video'''
-                centroid = raw_positions[metadata["location_valid"] == 1].iloc[0].values
-            zero_centered_positions = raw_positions.values - centroid
-            metadata["x"], metadata["y"], metadata["z"] = zero_centered_positions.transpose()
+            metadata["sampled"] = False
+        final_metadata.append(metadata)
     final_metadata = pd.concat(final_metadata, ignore_index=True)
-    print("{} outdoor videos".format(len(videos_list) - len(indoor_videos)))
-    print("{} indoor videos".format(len(indoor_videos)))
+    print(final_metadata["sampled"])
+    print("{} outdoor anafi videos".format(videos_summary["anafi"]["outdoor"]))
+    print("{} indoor anafi videos".format(videos_summary["anafi"]["indoor"]))
+    print("{} generic videos".format(videos_summary["generic"]))
 
     print("{} frames in total".format(len(final_metadata)))
 
-    cam_fields = ["width", "height", "framerate", "picture_hfov", "picture_vfov"]
-    cameras_dataframe = final_metadata[cam_fields].drop_duplicates()
-    cameras_dataframe = register_new_cameras(cameras_dataframe, database, colmap_cameras, "PINHOLE")
-    print("Cameras : ")
-    print(cameras_dataframe)
+    cam_fields = ["width", "height", "framerate", "picture_hfov", "picture_vfov", "camera_model"]
+    cameras_dataframe = final_metadata[final_metadata["model"] == "anafi"][cam_fields].drop_duplicates()
+    cameras_dataframe = register_new_cameras(cameras_dataframe, database, colmap_cameras)
     final_metadata["camera_id"] = 0
     for cam_id, row in cameras_dataframe.iterrows():
         final_metadata.loc[(final_metadata[cam_fields] == row).all(axis=1), "camera_id"] = cam_id
-    if any(final_metadata["camera_id"] == 0):
-        print("Error")
-        print((final_metadata["camera_id"] == 0))
+    if any(final_metadata["model"] == "generic"):
+        print("Undefined remaining cameras, assigning generic models to them")
+        generic_frames = final_metadata[final_metadata["model"] == "generic"]
+        generic_cameras_dataframe = generic_frames[cam_fields]
+        fixed_camera = True
+        if fixed_camera:
+            generic_cameras_dataframe = generic_cameras_dataframe.drop_duplicates()
+        generic_cameras_dataframe = register_new_cameras(generic_cameras_dataframe, database, colmap_cameras)
+        if fixed_camera:
+            for cam_id, row in generic_cameras_dataframe.iterrows():
+                final_metadata.loc[(final_metadata[cam_fields] == row).all(axis=1), "camera_id"] = cam_id
+                print(cam_fields)
+                print(final_metadata.loc[(final_metadata[cam_fields] == row).all(axis=1)])
+        else:
+            final_metadata.loc[generic_frames.index, "camera_id"] = generic_cameras_dataframe.index
+        cameras_dataframe = cameras_dataframe.append(generic_cameras_dataframe)
+    print("Cameras : ")
+    print(cameras_dataframe)
+
+    to_extract = total_frames - len(existing_pictures) - sum(final_metadata["sampled"])
+    print(to_extract, total_frames, len(existing_pictures), sum(final_metadata["sampled"]))
+    print(final_metadata["sampled"])
+    print(final_metadata["sampled"].unique())
 
     if to_extract <= 0:
-        final_metadata["sampled"] = False
+        pass
     elif to_extract < len(final_metadata):
         print("subsampling based on K-Means, to get {}"
               " frames from videos, for a total of {} frames".format(to_extract, total_frames))
@@ -186,7 +242,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     else:
         final_metadata["sampled"] = True
 
-    print("Constructing COLMAP model with {:,} frames".format(len(final_metadata[final_metadata["sampled"]])))
+    print("Constructing COLMAP model with {:,} frames".format(sum(final_metadata["sampled"])))
 
     database.commit()
     thorough_db.copy(tempfile_database)
@@ -209,6 +265,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                               "frame_quat_x",
                               "frame_quat_y",
                               "frame_quat_z"]].values
+            if True in pd.isnull(frame_qvec):
+                frame_qvec = np.array([1, 0, 0, 0])
             x, y, z = row[["x", "y", "z"]]
             frame_tvec = np.array([x, y, z])
             if row["location_valid"]:
