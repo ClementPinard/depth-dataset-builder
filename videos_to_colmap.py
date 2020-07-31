@@ -107,7 +107,7 @@ def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
 
 def register_new_cameras(cameras_dataframe, database, camera_dict):
     camera_ids = []
-    for _, (w, h, f, hfov, vfov, camera_model) in cameras_dataframe.iterrows():
+    for _, (w, h, f, hfov, vfov, camera_model, *_) in cameras_dataframe.iterrows():
         if not (np.isnan(hfov) or np.isnan(vfov)):
             fx = w / (2 * np.tan(hfov * np.pi/360))
             fy = h / (2 * np.tan(vfov * np.pi/360))
@@ -209,16 +209,15 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     if any(final_metadata["model"] == "generic"):
         print("Undefined remaining cameras, assigning generic models to them")
         generic_frames = final_metadata[final_metadata["model"] == "generic"]
-        generic_cameras_dataframe = generic_frames[cam_fields]
+        generic_cam_fields = cam_fields + ["video"]
+        generic_cameras_dataframe = generic_frames[generic_cam_fields]
         fixed_camera = True
         if fixed_camera:
             generic_cameras_dataframe = generic_cameras_dataframe.drop_duplicates()
         generic_cameras_dataframe = register_new_cameras(generic_cameras_dataframe, database, colmap_cameras)
         if fixed_camera:
             for cam_id, row in generic_cameras_dataframe.iterrows():
-                final_metadata.loc[(final_metadata[cam_fields] == row).all(axis=1), "camera_id"] = cam_id
-                print(cam_fields)
-                print(final_metadata.loc[(final_metadata[cam_fields] == row).all(axis=1)])
+                final_metadata.loc[(final_metadata[generic_cam_fields] == row).all(axis=1), "camera_id"] = cam_id
         else:
             final_metadata.loc[generic_frames.index, "camera_id"] = generic_cameras_dataframe.index
         cameras_dataframe = cameras_dataframe.append(generic_cameras_dataframe)

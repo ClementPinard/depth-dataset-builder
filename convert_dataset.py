@@ -106,7 +106,11 @@ def apply_cmap_and_resize(depth, colormap, downscale):
 def process_one_frame(img_path, depth_path, occ_path,
                       dataset_output_dir, video_output_dir, downscale, interpolated):
     img = imread(img_path)
-    h, w, _ = img.shape
+    if len(img.shape) == 3:
+        h, w, _ = img.shape
+    elif len(img.shape) == 2:
+        h, w = img.shape
+        img = img.reshape(h, w, 1)
     assert((h/downscale).is_integer() and (w/downscale).is_integer())
     output_img = np.zeros((2*(h//downscale), 2*(w//downscale), 3), dtype=np.uint8)
     rescaled_img = rescale(img, 1/downscale, multichannel=True)*255
@@ -148,7 +152,7 @@ parser.add_argument('--occ_dir', metavar='DIR', type=Path)
 parser.add_argument('--metadata_path', type=Path)
 parser.add_argument('--dataset_output_dir', metavar='DIR', default=None, type=Path)
 parser.add_argument('--video_output_dir', metavar='DIR', default=None, type=Path)
-parser.add_argument('--interpolated_frames_list', metavar='TXT', type=Path)
+parser.add_argument('--interpolated_frames_path', metavar='TXT', type=Path)
 parser.add_argument('--final_model', metavar='DIR', type=Path)
 parser.add_argument('--video', action='store_true')
 parser.add_argument('--downscale', type=int, default=1)
