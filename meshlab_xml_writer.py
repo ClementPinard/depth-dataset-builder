@@ -72,7 +72,7 @@ def add_meshes_to_project(input_mlp, output_mlp, model_paths, labels=None, trans
         mesh.set("filename", m)
         matrix = etree.SubElement(mesh, "MLMatrix44")
         matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in t) + "\n"
-        group.insert(start_index + 1, mesh)
+        group.insert(start_index, mesh)
     to_modify.write(output_mlp, pretty_print=True)
 
 

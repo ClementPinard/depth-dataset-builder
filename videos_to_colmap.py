@@ -167,6 +167,10 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                     set it as the first valid GPS position of the first outdoor video'''
                     centroid = raw_positions[metadata["location_valid"] == 1].iloc[0].values
                 zero_centered_positions = raw_positions.values - centroid
+                radius = np.max(np.abs(zero_centered_positions))
+                if radius > 1000:
+                    print("Warning, your positions coordinates are most likely too high, have you configured the right GPS system ?")
+                    print("It should be the same as the one used for the Lidar point cloud")
                 metadata["x"], metadata["y"], metadata["z"] = zero_centered_positions.transpose()
         except Exception:
             # No metadata found, construct a simpler dataframe without location
@@ -184,6 +188,10 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             metadata["camera_model"] = "OPENCV"
             metadata["picture_hfov"] = height
             metadata["picture_vfov"] = height
+            metadata["frame_quat_w"] = np.NaN
+            metadata["frame_quat_x"] = np.NaN
+            metadata["frame_quat_y"] = np.NaN
+            metadata["frame_quat_z"] = np.NaN
             videos_summary["generic"] += 1
         if include_lowfps_thorough:
             by_time = metadata.set_index(pd.to_datetime(metadata["time"], unit="us"))
