@@ -79,6 +79,8 @@ def get_georef(metadata):
 
 def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
     valid_metadata = metadata[~metadata["sampled"]].dropna()
+    if len(valid_metadata) == 0:
+        return metadata
     XYZ = valid_metadata[["x", "y", "z"]].values
     axis_angle = valid_metadata[["frame_quat_x", "frame_quat_y", "frame_quat_z"]].values
     if True in valid_metadata["indoor"].unique():
@@ -107,17 +109,28 @@ def optimal_sample(metadata, num_frames, orientation_weight, resolution_weight):
 
 def register_new_cameras(cameras_dataframe, database, camera_dict):
     camera_ids = []
-    for _, (w, h, f, hfov, vfov, camera_model, *_) in cameras_dataframe.iterrows():
-        if not (np.isnan(hfov) or np.isnan(vfov)):
+    for _, row in cameras_dataframe.iterrows():
+        w, h, hfov, vfov, camera_model = row.reindex(["width", "height", "picture_hfov", "picture_vfov", "camera_model"])
+        prior_focal_length = False
+        single_focal = ('SIMPLE' in camera_model) or ('RADIAL' in camera_model)
+        if hfov != 0:
             fx = w / (2 * np.tan(hfov * np.pi/360))
-            fy = h / (2 * np.tan(vfov * np.pi/360))
+            # If the model is not single focal, only knowing hfov is not enough, you also need to know vfov
+            prior_focal_length = single_focal
         else:
-            fx = w  # This is just a placeholder meant to be optimized
-            fy = w
+            fx = w / 2  # As if hfov was 90 degrees
+        if vfov != 0:
+            fy = h / (2 * np.tan(vfov * np.pi/360))
+            prior_focal_length = True
+        else:
+            fy = w / 2  # As if vfov was 90 degrees
         model_id = rm.CAMERA_MODEL_NAMES[camera_model].model_id
         num_params = rm.CAMERA_MODEL_NAMES[camera_model].num_params
-        params = np.array([fx, fy, w/2, h/2] + [0] * (num_params - 4))
-        db_id = database.add_camera(model_id, w, h, params, prior_focal_length=True)
+        if ('SIMPLE' in camera_model) or ('RADIAL' in camera_model):
+            params = np.array([fx, w/2, h/2] + [0] * (num_params - 3))
+        else:
+            params = np.array([fx, fy, w/2, h/2] + [0] * (num_params - 4))
+        db_id = database.add_camera(model_id, int(w), int(h), params, prior_focal_length=prior_focal_length)
         camera_ids.append(db_id)
         camera_dict[db_id] = rm.Camera(id=db_id,
                                        model=camera_model,
@@ -185,13 +198,16 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             metadata['indoor'] = True
             metadata['location_valid'] = 0
             metadata["model"] = "generic"
-            metadata["camera_model"] = "OPENCV"
-            metadata["picture_hfov"] = height
-            metadata["picture_vfov"] = height
+            metadata["camera_model"] = "PINHOLE"
+            metadata["picture_hfov"] = 0
+            metadata["picture_vfov"] = 0
             metadata["frame_quat_w"] = np.NaN
             metadata["frame_quat_x"] = np.NaN
             metadata["frame_quat_y"] = np.NaN
             metadata["frame_quat_z"] = np.NaN
+            metadata["x"] = np.NaN
+            metadata["y"] = np.NaN
+            metadata["z"] = np.NaN
             videos_summary["generic"] += 1
         if include_lowfps_thorough:
             by_time = metadata.set_index(pd.to_datetime(metadata["time"], unit="us"))
@@ -201,7 +217,6 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             metadata["sampled"] = False
         final_metadata.append(metadata)
     final_metadata = pd.concat(final_metadata, ignore_index=True)
-    print(final_metadata["sampled"])
     print("{} outdoor anafi videos".format(videos_summary["anafi"]["outdoor"]))
     print("{} indoor anafi videos".format(videos_summary["anafi"]["indoor"]))
     print("{} generic videos".format(videos_summary["generic"]))
@@ -233,9 +248,6 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     print(cameras_dataframe)
 
     to_extract = total_frames - len(existing_pictures) - sum(final_metadata["sampled"])
-    print(to_extract, total_frames, len(existing_pictures), sum(final_metadata["sampled"]))
-    print(final_metadata["sampled"])
-    print(final_metadata["sampled"].unique())
 
     if to_extract <= 0:
         pass

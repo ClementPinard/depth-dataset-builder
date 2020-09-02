@@ -41,6 +41,8 @@ def main():
     no_gt_folder = args.input_folder/"Videos"/"no_groundtruth"
     if no_gt_folder.isdir():
         env["videos_to_localize"] = [v for v in env["videos_list"] if not str(v).startswith(no_gt_folder)]
+    else:
+        env["videos_to_localize"] = env["videos_list"]
 
     i = 1
     if i not in args.skip_step:
