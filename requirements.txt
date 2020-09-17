@@ -15,3 +15,4 @@ pebble
 dicttoxml
 lxml
 scikit-image
+rawpy

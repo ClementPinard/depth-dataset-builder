@@ -73,9 +73,12 @@ def main():
         colmap.extract_features(image_list=env["video_frame_list_thorough"], more=args.more_sift_features)
         colmap.index_images(vocab_tree_output=env["indexed_vocab_tree"], vocab_tree_input=args.vocab_tree)
         colmap.match(method="vocab_tree", vocab_tree=env["indexed_vocab_tree"])
-        colmap.map(output=env["thorough_recon"])
-        colmap.adjust_bundle(output=env["thorough_recon"] / "0", input=env["thorough_recon"] / "0",
+        colmap.map(output=env["thorough_recon"], multiple_models=env["multiple_models"])
+        thorough_model = pi.choose_biggest_model(env["thorough_recon"])
+        colmap.adjust_bundle(thorough_model, thorough_model,
                              num_iter=100, refine_extra_params=True)
+    else:
+        thorough_model = pi.choose_biggest_model(env["thorough_recon"])
 
     i += 1
     if i not in args.skip_step:
@@ -84,6 +87,10 @@ def main():
         colmap.align_model(output=env["georef_recon"],
                            input=env["thorough_recon"] / "0",
                            ref_images=env["georef_frames_list"])
+        if not (env["georef_frames_list"]/"images.bin").isfile():
+            # GPS alignment failed, possibly because not enough GPS referenced images
+            # Copy the original model without alignment
+            (env["thorough_recon"] / "0").merge_tree(env["georef_full_recon"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
     if args.inspect_dataset:
         colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",
@@ -130,7 +137,8 @@ def main():
     if i not in args.skip_step:
         print_step(i, "Occlusion Mesh computing")
         colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["georefrecon_ply"])
-        eth3d.create_splats(env["splats_ply"], env["georefrecon_ply"].stripext() + "_filtered.ply", env["occlusion_ply"], threshold=args.splat_threshold)
+        if args.splats:
+            eth3d.create_splats(env["splats_ply"], env["georefrecon_ply"].stripext() + "_filtered.ply", env["occlusion_ply"], threshold=args.splat_threshold)
 
     if args.inspect_dataset:
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],

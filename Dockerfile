@@ -8,6 +8,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update \
   && apt install -y git \
     repo \
+    ffmpeg \
     python3 \
     python3-pip \
     python \

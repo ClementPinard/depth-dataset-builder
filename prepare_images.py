@@ -5,6 +5,7 @@ import rawpy
 import imageio
 import generate_sky_masks as gsm
 import videos_to_colmap as v2c
+import colmap_util as ci
 
 
 def extract_gps_and_path(existing_pictures, image_path, system, centroid=None, **env):
@@ -62,3 +63,9 @@ def extract_videos_to_workspace(video_path, video_frame_list_thorough, georef_fr
                     f.write("\n".join(l) + "\n")
     gsm.process_folder(folder_to_process=video_path, **env)
     return extracted_video_folders
+
+
+def choose_biggest_model(dir):
+    colmap_model_dirs = dir.dirs("[0-9]*")
+    model_sizes = [len(ci.read_model.read_images_binary(d/"images.bin")) for d in colmap_model_dirs]
+    return colmap_model_dirs[model_sizes.index(max((model_sizes)))]
