@@ -57,7 +57,7 @@ def main():
         env["videos_frames_folders"] = pi.extract_videos_to_workspace(fps=args.lowfps, **env)
     else:
         env["videos_frames_folders"] = {}
-        by_name = {v.namebase: v for v in env["videos_list"]}
+        by_name = {v.stem: v for v in env["videos_list"]}
         for folder in env["video_path"].walkdirs():
             video_name = folder.basename()
             if video_name in by_name.keys():

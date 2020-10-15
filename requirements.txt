@@ -1,7 +1,7 @@
 torch
 laspy
 pyproj
-path.py
+path
 tqdm
 numpy
 piexif

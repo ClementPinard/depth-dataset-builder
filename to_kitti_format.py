@@ -40,7 +40,7 @@ def save_intrinsics(cameras, images, output_dir, downscale=1):
         for _, img in images.items():
             cam = cameras[img.camera_id]
             intrinsics = construct_intrinsics(cam)
-            intrinsics_name = output_dir / Path(img.name).namebase + "_intrinsics.txt"
+            intrinsics_name = output_dir / Path(img.name).stem + "_intrinsics.txt"
             np.savetxt(intrinsics_name, intrinsics)
 
 

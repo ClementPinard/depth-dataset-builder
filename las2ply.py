@@ -18,8 +18,8 @@ parser.add_argument('--verbose', '-v', action='store_true')
 
 def load_and_convert(input_file, output_folder, verbose=False):
     output_folder.makedirs_p()
-    ply_path = output_folder / input_file.namebase + '.ply'
-    txt_path = output_folder / input_file.namebase + '_centroid.txt'
+    ply_path = output_folder / input_file.stem + '.ply'
+    txt_path = output_folder / input_file.stem + '_centroid.txt'
     file_type = input_file.ext[1:].upper()
     if file_type == "LAS":
         offset = np.array(laspy.file.File(input_file, mode="r").header.offset)

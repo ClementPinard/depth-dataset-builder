@@ -56,7 +56,7 @@ def save_images_path_list(output_folder, origin, images_path_list):
 
 def workflow(root, output_folder, video_path, args):
     print("Generating images with gps for video {}".format(str(video_path)))
-    output_folder /= video_path.namebase
+    output_folder /= video_path.stem
     if args.fps is not None:
         output_folder += "_{}fps".format(args.fps)
     output_folder.mkdir_p()

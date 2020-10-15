@@ -166,7 +166,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
 
         colmap.triangulate_points(final_model, final_model)
         colmap.export_model(final_model, final_model, output_type="TXT")
-        ply_name = final_model / "georef_{}.ply".format(video_name.namebase)
+        ply_name = final_model / "georef_{}.ply".format(video_name.stem)
         matrix_name = final_model / "matrix.txt"
         colmap.export_model(ply_name, final_model, output_type="PLY")
         pcl_util.register_reconstruction(georef=ply_name, lidar=env["lidar_ply"],
@@ -257,9 +257,9 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     print_step(i_pv, "Convert to KITTI format and create video with GT vizualisation")
 
     cd.convert_dataset(final_model,
-                       raw_output_folder / "ground_truth_depth" / video_name.namebase,
+                       raw_output_folder / "ground_truth_depth" / video_name.stem,
                        images_root_folder,
-                       raw_output_folder / "occlusion_depth" / video_name.namebase,
+                       raw_output_folder / "occlusion_depth" / video_name.stem,
                        kitti_format_folder, viz_folder,
                        metadata, interpolated_frames_list,
                        video=True, downscale=4, threads=8, **env)

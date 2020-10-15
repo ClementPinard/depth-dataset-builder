@@ -62,7 +62,7 @@ def prepare_video_workspace(video_name, video_frames_folder,
     video_env["metadata"] = video_frames_folder / "metadata.csv"
     video_env["lowfps_image_list_path"] = video_frames_folder / "lowfps.txt"
     video_env["chunk_image_list_paths"] = sorted(video_frames_folder.files("full_chunk_*.txt"))
-    video_env["chunk_dbs"] = [video_frames_folder / fp.namebase + ".db" for fp in video_env["chunk_image_list_paths"]]
+    video_env["chunk_dbs"] = [video_frames_folder / fp.stem + ".db" for fp in video_env["chunk_image_list_paths"]]
     colmap_root = video_recon / relative_path_folder
     video_env["colmap_models_root"] = colmap_root
     video_env["full_model"] = colmap_root
@@ -80,5 +80,5 @@ def prepare_video_workspace(video_name, video_frames_folder,
     output["viz_folder"] = converted_output_folder / "video" / relative_path_folder
     video_env["output_env"] = output
     video_env["already_localized"] = env["resume_work"] and output["model_folder"].isdir()
-    video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "ground_truth_depth" / video_name.namebase).isdir()
+    video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "ground_truth_depth" / video_name.stem).isdir()
     return video_env
