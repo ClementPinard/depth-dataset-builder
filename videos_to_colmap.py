@@ -161,7 +161,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     videos_summary = {"anafi": {"indoor": 0, "outdoor": 0}, "generic": 0}
     for v in tqdm(videos_list):
         width, height, framerate, num_frames = env["ffmpeg"].get_size_and_framerate(v)
-        video_output_folder = output_video_folder / "{}x{}".format(width, height) / v.namebase
+        video_output_folder = output_video_folder / "{}x{}".format(width, height) / v.stem
         video_output_folder.makedirs_p()
         video_output_folders[v] = video_output_folder
 
@@ -273,7 +273,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         video = row["video"]
         frame = row["frame"]
         camera_id = row["camera_id"]
-        current_image_path = video_output_folders[video].relpath(image_path) / video.namebase + "_{:05d}.jpg".format(frame)
+        current_image_path = video_output_folders[video].relpath(image_path) / video.stem + "_{:05d}.jpg".format(frame)
 
         final_metadata.at[current_id, "image_path"] = current_image_path
         db_image_id = temp_database.add_image(current_image_path, int(camera_id))
