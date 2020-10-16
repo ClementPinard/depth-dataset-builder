@@ -19,12 +19,12 @@ def is_video_in_model(video_name, colmap_model, metadata):
     return sum(video_image_ids.isin(mapped_images_ids)) > 0
 
 
-def sift_and_match(colmap, more_sift_features, indexed_vocab_tree, image_list, **env):
+def sift_and_match(colmap, more_sift_features, indexed_vocab_tree, image_list, max_num_matches, **env):
     tries = 0
     while tries < 10:
         try:
             colmap.extract_features(image_list=image_list, more=more_sift_features)
-            colmap.match(method="sequential", vocab_tree=indexed_vocab_tree)
+            colmap.match(method="sequential", vocab_tree=indexed_vocab_tree, max_num_matches=max_num_matches)
         except Exception:
             # If it failed, that's because sift gpu has failed.
             print("Error With colmap, will retry")

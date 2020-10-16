@@ -72,7 +72,7 @@ def main():
         env["thorough_recon"].makedirs_p()
         colmap.extract_features(image_list=env["video_frame_list_thorough"], more=args.more_sift_features)
         colmap.index_images(vocab_tree_output=env["indexed_vocab_tree"], vocab_tree_input=args.vocab_tree)
-        colmap.match(method="vocab_tree", vocab_tree=env["indexed_vocab_tree"])
+        colmap.match(method="vocab_tree", vocab_tree=env["indexed_vocab_tree"], max_num_matches=env["max_num_matches"])
         colmap.map(output=env["thorough_recon"], multiple_models=env["multiple_models"])
         thorough_model = pi.choose_biggest_model(env["thorough_recon"])
         colmap.adjust_bundle(thorough_model, thorough_model,
@@ -90,7 +90,7 @@ def main():
         if not (env["georef_frames_list"]/"images.bin").isfile():
             # GPS alignment failed, possibly because not enough GPS referenced images
             # Copy the original model without alignment
-            (env["thorough_recon"] / "0").merge_tree(env["georef_full_recon"])
+            (env["thorough_recon"] / "0").merge_tree(env["georef_recon"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
     if args.inspect_dataset:
         colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",

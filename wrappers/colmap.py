@@ -29,10 +29,11 @@ class Colmap(Wrapper):
             pass
         self.__call__(options)
 
-    def match(self, method="exhaustive", guided_matching=True, vocab_tree=None):
+    def match(self, method="exhaustive", guided_matching=True, vocab_tree=None, max_num_matches=32768):
         options = ["{}_matcher".format(method),
                    "--database_path", self.db,
-                   "--SiftMatching.guided_matching", "1" if guided_matching else "0"]
+                   "--SiftMatching.guided_matching", "1" if guided_matching else "0",
+                   "--SiftMatching.max_num_matches", str(max_num_matches)]
         if method == "sequential":
             assert vocab_tree is not None
             options += ["--SequentialMatching.loop_detection", "1",
