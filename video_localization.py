@@ -210,10 +210,6 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     if model_length < 2:
         return
 
-    final_mlp = final_model / "aligned.mlp"
-    final_occlusions = final_model / "occlusions.mlp"
-    final_splats = final_model / "splats.mlp"
-
     '''
     In case the reconstructed model is only locally good, there's the possibility of having a specific
     transformation matrix per video in the final model folder, which might work better than the the global registration_matrix
@@ -222,6 +218,9 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     if specific_matrix_path.isfile():
         registration_matrix = np.linalg.inv(np.fromfile(specific_matrix_path, sep=" ").reshape(4, 4))
         adjustment_matrix = registration_matrix * np.linalg.inv(global_registration_matrix)
+        final_mlp = final_model / "aligned.mlp"
+        final_occlusions = final_model / "occlusions.mlp"
+        final_splats = final_model / "splats.mlp"
         mxw.apply_transform_to_project(aligned_mlp, final_mlp, adjustment_matrix)
         mxw.create_project(final_occlusions, [occlusion_ply], transforms=[adjustment_matrix])
         mxw.create_project(final_splats, [splats_ply], transforms=[adjustment_matrix])

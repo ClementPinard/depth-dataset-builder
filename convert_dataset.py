@@ -35,7 +35,7 @@ def save_intrinsics(cameras, images, output_dir, downscale=1):
         for _, img in images.items():
             cam = cameras[img.camera_id]
             intrinsics = construct_intrinsics(cam)
-            intrinsics_name = output_dir / Path(img.name).namebase + "_intrinsics.txt"
+            intrinsics_name = output_dir / Path(img.name).stem + "_intrinsics.txt"
             np.savetxt(intrinsics_name, intrinsics)
 
 
@@ -140,7 +140,7 @@ def process_one_frame(img_path, depth_path, occ_path,
     if interpolated:
         output_img[:5] = output_img[-5:] = output_img[:, :5] = output_img[:, -5:] = [255, 128, 0]
 
-    imwrite(video_output_dir/img_path.namebase + '.png', output_img)
+    imwrite(video_output_dir/img_path.stem + '.png', output_img)
 
 
 parser = ArgumentParser(description='create a vizualisation from ground truth created',
@@ -184,7 +184,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     cameras = []
 
     for i in metadata["image_path"]:
-        img_path = images_root_folder / Path(i).relpath("Videos")
+        img_path = images_root_folder / i
         imgs.append(img_path)
 
         fname = img_path.basename()
@@ -221,7 +221,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
                 raise e
 
     if video:
-        video_path = str(video_output_dir/'{}_groundtruth_viz.mp4'.format(video_output_dir.namebase))
+        video_path = str(video_output_dir/'{}_groundtruth_viz.mp4'.format(video_output_dir.stem))
         glob_pattern = str(video_output_dir/'*.png')
         ffmpeg.create_video(video_path, glob_pattern, framerate)
 

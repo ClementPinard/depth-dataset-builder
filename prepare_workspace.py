@@ -25,7 +25,7 @@ def prepare_workspace(path, env, with_lidar=True):
         env["lidar_mlp"] = env["workspace"] / "lidar.mlp"
         env["with_normals_path"] = env["lidar_path"] / "with_normals.ply"
         env["occlusion_ply"] = env["lidar_path"] / "occlusion_model.ply"
-        env["splats_ply"] = env["lidar_path"] / "splats_model.ply"
+        env["splats_ply"] = env["lidar_path"] / "splats_model.ply" if env["splats"] else None
         env["occlusion_mlp"] = env["lidar_path"] / "occlusions.mlp"
         env["splats_mlp"] = env["lidar_path"] / "splats.mlp"
         env["matrix_path"] = env["workspace"] / "matrix_thorough.txt"
@@ -72,7 +72,7 @@ def prepare_video_workspace(video_name, video_frames_folder,
     video_env["final_model"] = colmap_root / "final"
     output = {}
     output["images_root_folder"] = raw_output_folder / "images"
-    output["video_frames_folder"] = output["images_root_folder"] / relative_path_folder
+    output["video_frames_folder"] = output["images_root_folder"] / "Video" / relative_path_folder
     output["model_folder"] = raw_output_folder / "models" / relative_path_folder
     output["interpolated_frames_list"] = output["model_folder"] / "interpolated_frames.txt"
     output["final_model"] = output["model_folder"] / "final"

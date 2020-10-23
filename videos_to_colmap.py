@@ -70,9 +70,9 @@ def get_georef(metadata):
     relevant_data = metadata[["location_valid", "image_path", "x", "y", "z"]]
     path_list = []
     georef_list = []
-    for _, (gps, path, x, y, alt) in relevant_data.iterrows():
+    for _, (loc_valid, path, x, y, alt) in relevant_data.iterrows():
         path_list.append(path)
-        if gps == 1:
+        if loc_valid:
             georef_list.append("{} {} {} {}\n".format(path, x, y, alt))
     return georef_list, path_list
 
@@ -159,6 +159,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
 
     print("extracting metadata for {} videos...".format(len(videos_list)))
     videos_summary = {"anafi": {"indoor": 0, "outdoor": 0}, "generic": 0}
+
+    indoor_video_diameters = {}
     for v in tqdm(videos_list):
         width, height, framerate, num_frames = env["ffmpeg"].get_size_and_framerate(v)
         video_output_folder = output_video_folder / "{}x{}".format(width, height) / v.stem
@@ -170,15 +172,18 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                                            width, height, framerate)
             metadata["model"] = "anafi"
             metadata["camera_model"] = "PINHOLE"
+            raw_positions = metadata[["x", "y", "z"]]
+            video_displacement_diameter = np.linalg.norm(raw_positions.values.max(axis=0) - raw_positions.values.min(axis=0))
             if metadata["indoor"].iloc[0]:
                 videos_summary["anafi"]["indoor"] += 1
+                indoor_video_diameters[video_displacement_diameter] = v
             else:
                 videos_summary["anafi"]["outdoor"] += 1
                 raw_positions = metadata[["x", "y", "z"]]
                 if centroid is None:
                     '''No centroid (possibly because there was no georeferenced lidar model in the first place)
                     set it as the first valid GPS position of the first outdoor video'''
-                    centroid = raw_positions[metadata["location_valid"] == 1].iloc[0].values
+                    centroid = raw_positions[metadata["location_valid"]].iloc[0].values
                 zero_centered_positions = raw_positions.values - centroid
                 radius = np.max(np.abs(zero_centered_positions))
                 if radius > 1000:
@@ -196,7 +201,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             # timestemp is in microseconds
             metadata['time'] = 1e6 * metadata.index / framerate
             metadata['indoor'] = True
-            metadata['location_valid'] = 0
+            metadata['location_valid'] = False
             metadata["model"] = "generic"
             metadata["camera_model"] = "PINHOLE"
             metadata["picture_hfov"] = 0
@@ -209,6 +214,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             metadata["y"] = np.NaN
             metadata["z"] = np.NaN
             videos_summary["generic"] += 1
+        metadata["num_frames"] = num_frames
         if include_lowfps_thorough:
             by_time = metadata.set_index(pd.to_datetime(metadata["time"], unit="us"))
             by_time_lowfps = by_time.resample("{:.3f}S".format(1/fps)).first()
@@ -220,6 +226,24 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     print("{} outdoor anafi videos".format(videos_summary["anafi"]["outdoor"]))
     print("{} indoor anafi videos".format(videos_summary["anafi"]["indoor"]))
     print("{} generic videos".format(videos_summary["generic"]))
+
+    if(videos_summary["anafi"]["outdoor"] == 0 and videos_summary["anafi"]["indoor"] > 0):
+        # We have no GPS data but we have navdata, which will help rescale the colmap model
+        # Take the longest video and do as if the GPS was valid
+        longest_video = indoor_video_diameters[max(indoor_video_diameters)]
+        print("Only indoor videos used, will use {} for COLMAP rescaling".format(longest_video))
+        video_index = final_metadata["video"] == longest_video
+        if include_lowfps_thorough:
+            # We already added frames to be sampled so we just copy the boolean to the "location_valid" column
+            final_metadata.loc[video_index, "location_valid"] = final_metadata.loc[video_index, "sampled"]
+        else:
+            # Take frames at lowfps, add it to the thorough photogrammetry and mark their location as valid
+            video_md = final_metadata[video_index]
+            by_time = video_md.set_index(pd.to_datetime(video_md["time"], unit="us"))
+            by_time_lowfps = by_time.resample("{:.3f}S".format(1/fps)).first()
+            to_georef = by_time["time"].isin(by_time_lowfps["time"]).values
+            final_metadata.loc[video_index, "sampled"] = to_georef
+            final_metadata.loc[video_index, "location_valid"] = to_georef
 
     print("{} frames in total".format(len(final_metadata)))
 

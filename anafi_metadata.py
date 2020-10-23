@@ -30,7 +30,7 @@ def preprocess_metadata(metadata, proj):
     speed = metadata[["speed_east", "speed_north", "speed_down"]].values * np.array([1, 1, -1])
     timestamps = metadata["time"].values * 1e-6
     positions = metadata[["x", "y", "z"]].values
-    if metadata["location_valid"].unique().tolist() == [0]:
+    if metadata["location_valid"].unique().tolist() == [False]:
         metadata["indoor"] = True
         positions = extrapolate_position(speed, timestamps, None, None)
     else:
@@ -41,10 +41,10 @@ def preprocess_metadata(metadata, proj):
             invalidity_start = location_validity.index[location_validity == -1].tolist()
             validity_start = location_validity.index[location_validity == 1].tolist()
 
-            if metadata["location_valid"].iloc[0] == 0:
+            if metadata["location_valid"].iloc[0]:
                 end = validity_start.pop(0)
                 positions[:end] = extrapolate_position(speed[:end], timestamps[:end], None, positions[end])
-            if metadata["location_valid"].iloc[-1] == 0:
+            if metadata["location_valid"].iloc[-1]:
                 start = invalidity_start.pop(-1) - 1
                 positions[start:] = extrapolate_position(speed[start:], timestamps[start:], positions[start], None)
 
@@ -74,6 +74,7 @@ def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, save
     metadata["framerate"] = f
     metadata["video"] = file_path
     metadata['frame'] = metadata.index + 1
+    metadata["location_valid"] = metadata["location_valid"] == 1
     if save_path is not None:
         metadata.to_csv(save_path)
     return metadata

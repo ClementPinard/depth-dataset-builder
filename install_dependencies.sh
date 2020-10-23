@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # This script helps you install the necessary tools to construct a depth enabled dataset with Anafi videos
-# Note that CUDA and Anaconda need to be already installed
+# Note that CUDA and Anaconda need to be already installed.
+# For CUDA, try to install the last package : https://developer.nvidia.com/cuda-downloads instead of the one installed by APT
 # Also note that for repo to work, git needs to be parametrized with email and name.
+# It has been tested with Ubuntu 18.04 and Ubunut 20.04
 
 
 # This command makes sure that the .so files pointed by the cmake commands are the right ones

@@ -38,6 +38,8 @@ int main (int argc, char** argv)
   pcl::console::parse_argument(argc, argv, "--output_cloud", output_cloud_path);
   float resolution = 0.2; //20cm resolution
   pcl::console::parse_argument(argc, argv, "--resolution", resolution);
+  float max_distance = 10;
+  pcl::console::parse_argument(argc, argv, "--max_distance", max_distance);
 
   if (output_cloud_path.empty()){
     LOG(ERROR) << "No output path was given";
@@ -97,8 +99,12 @@ int main (int argc, char** argv)
 
   for(auto it = lidar->begin(); it != lidar->end(); it++){
     tree->nearestKSearch(*it, 1, nn_indices, nn_dists);
-    std::vector<int> image_idx = input_vis_points.at(nn_indices[0]);
-    output_vis_points.push_back(image_idx);
+    if(nn_dists[0] <= max_distance){
+      std::vector<int> image_idx = input_vis_points.at(nn_indices[0]);
+      output_vis_points.push_back(image_idx);
+    }else{
+      output_vis_points.push_back(std::vector<int>)
+    }
   }
 
   

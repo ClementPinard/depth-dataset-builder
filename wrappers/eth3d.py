@@ -44,13 +44,17 @@ class ETH3D(Wrapper):
                             point_cloud=True, depth_maps=True, occlusion_maps=True):
         options = ["GroundTruthCreator", "--scan_alignment_path", scan_meshlab,
                    "--image_base_path", self.image_path, "--state_path", colmap_model,
-                   "--output_folder_path", output_folder, "--occlusion_mesh_path", occlusions,
-                   "--occlusion_splats_path", splats,
+                   "--output_folder_path", output_folder,
                    "--max_occlusion_depth", str(self.max_occlusion_depth),
                    "--write_point_cloud", "1" if point_cloud else "0",
                    "--write_depth_maps", "1" if depth_maps else "0",
                    "--write_occlusion_depth", "1" if occlusion_maps else "0",
                    "--compress_depth_maps", "1"]
+        if occlusions is not None:
+            options += ["--occlusion_mesh_path", occlusions]
+        if splats is not None:
+            options += ["--occlusion_splats_path", splats]
+
         self.__call__(options)
 
     def inspect_dataset(self, scan_meshlab, colmap_model, occlusions=None, splats=None, image_path=None):

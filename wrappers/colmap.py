@@ -43,7 +43,7 @@ class Colmap(Wrapper):
             options += ["--VocabTreeMatching.vocab_tree_path", vocab_tree]
         self.__call__(options)
 
-    def map(self, output, input=None, multiple_models=False, start_frame_id=None):
+    def map(self, output, input=None, multiple_models=True, start_frame_id=None):
         options = ["mapper", "--database_path", self.db,
                    "--image_path", self.image_path,
                    "--output_path", output]

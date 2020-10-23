@@ -215,21 +215,31 @@ def main():
             mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
     else:
         env["global_registration_matrix"] = get_matrix(env["matrix_path"])
+        mxw.apply_transform_to_project(env["lidar_mlp"], env["aligned_mlp"], env["global_registration_matrix"])
 
     i += 1
     if i not in args.skip_step:
         print_step(i, "Occlusion Mesh computing")
+        '''combine the MLP file into a single ply file. We need the normals for the splats'''
         if args.normals_method == "radius":
             eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_radius=args.normals_radius)
         else:
             eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_count=args.normals_neighbours)
+        '''Create vis file that will tell by what images each point can be seen. We transfer this knowledge from georefrecon
+        to the Lidar model'''
+        scale = np.linalg.norm(env["global_registration_matrix"], ord=2)
+        with_normals_subsampled = env["with_normals_path"].stripext() + "_subsampled.ply"
         pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"],
-                                 resolution=args.mesh_resolution, output=env["with_normals_path"].stripext() + "_subsampled.ply")
-        colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["with_normals_path"].stripext() + "_subsampled.ply")
+                                 resolution=args.mesh_resolution / scale,
+                                 output=with_normals_subsampled)
+        '''Compute the occlusion mesh by fooling COLMAP into thinking the lidar point cloud was made with colmap'''
+        colmap.delaunay_mesh(env["occlusion_ply"], input_ply=with_normals_subsampled)
         if args.splats:
-            eth3d.create_splats(env["splats_ply"], env["with_normals_path"], env["occlusion_ply"], threshold=args.splat_threshold)
+            eth3d.create_splats(env["splats_ply"], with_normals_subsampled, env["occlusion_ply"], threshold=args.splat_threshold / scale)
 
     if args.inspect_dataset:
+        # First inspection : Check registration of the Lidar pointcloud wrt to COLMAP model but without the occlusion mesh
+        # Second inspection : Check the occlusion mesh and the splats
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_recon"],
                               image_path=env["image_path"])
