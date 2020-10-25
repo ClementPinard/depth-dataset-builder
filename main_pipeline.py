@@ -131,10 +131,10 @@ def main():
         colmap.align_model(output=env["georef_recon"],
                            input=thorough_model,
                            ref_images=env["georef_frames_list"])
-        if not (env["georef_frames_list"]/"images.bin").isfile():
+        if not (env["georef_recon"]/"images.bin").isfile():
             # GPS alignment failed, possibly because not enough GPS referenced images
             # Copy the original model without alignment
-            (env["thorough_recon"] / "0").merge_tree(env["georef_recon"])
+            thorough_model.merge_tree(env["georef_recon"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
     if args.inspect_dataset:
         colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",
@@ -166,7 +166,7 @@ def main():
         print_step(i, "Full reconstruction point cloud densificitation")
         env["georef_full_recon"].makedirs_p()
         colmap.undistort(input=env["georef_full_recon"])
-        colmap.dense_stereo()
+        colmap.dense_stereo(min_depth=env["stereo_min_depth"], max_depth=env["stereo_max_depth"])
         colmap.stereo_fusion(output=env["georefrecon_ply"])
 
     def get_matrix(path):

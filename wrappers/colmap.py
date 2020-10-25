@@ -98,10 +98,14 @@ class Colmap(Wrapper):
                    "--output_type", "COLMAP", "--max_image_size", str(max_image_size)]
         self.__call__(options)
 
-    def dense_stereo(self):
+    def dense_stereo(self, max_depth=None, min_depth=None):
         options = ["patch_match_stereo", "--workspace_path", self.dense_workspace,
                    "--workspace_format", "COLMAP",
                    "--PatchMatchStereo.geom_consistency", "1"]
+        if min_depth is not None:
+            options += ["--PatchMatchStereo.depth_min", str(min_depth)]
+        if max_depth is not None:
+            options += ["--PatchMatchStereo.depth_max", str(max_depth)]
         self.__call__(options)
 
     def stereo_fusion(self, output):

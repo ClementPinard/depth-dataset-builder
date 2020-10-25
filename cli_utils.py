@@ -62,6 +62,8 @@ def set_argparser():
     pm_parser.add_argument('--more_sift_features', action="store_true")
     pm_parser.add_argument('--save_space', action="store_true")
     pm_parser.add_argument('--add_new_videos', action="store_true")
+    pm_parser.add_argument('--stereo_min_depth', type=float, default=0.1)
+    pm_parser.add_argument('--stereo_max_depth', type=float, default=100)
 
     om_parser = parser.add_argument_group("Occlusion Mesh")
     om_parser.add_argument('--normals_method', default="radius", choices=["radius", "neighbours"])
