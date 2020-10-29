@@ -20,26 +20,29 @@ def set_argparser():
                              help='Skip selected steps')
     main_parser.add_argument('--begin_step', metavar="N", type=int, default=None)
     main_parser.add_argument('--show_steps', action="store_true")
+    main_parser.add_argument('--add_new_videos', action="store_true",
+                             help="If selected, will skit first 6 steps to directly register videos without mapping")
+    main_parser.add_argument('--save_space', action="store_true")
     main_parser.add_argument('-v', '--verbose', action="count", default=0)
+    main_parser.add_argument('--resume_work', action="store_true",
+                             help='If selected, will try to skip video aready localized, and ground truth already generated')
+    main_parser.add_argument('--inspect_dataset', action="store_true",
+                             help='If selected, will open a window to inspect the dataset. '
+                                  'See https://github.com/ETH3D/dataset-pipeline#dataset-inspection')
     main_parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"],
                              help='Video extensions to scrape from input folder')
     main_parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"],
                              help='Image extensions to scrape from input folder')
     main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"],
                              help='Raw Image extensions to scrape from input folder')
-    main_parser.add_argument('--resume_work', action="store_true",
-                             help='If selected, will try to skip video aready localized, and ground truth already generated')
-    main_parser.add_argument('--inspect_dataset', action="store_true",
-                             help='If selected, will open a window to inspect the dataset. '
-                                  'See https://github.com/ETH3D/dataset-pipeline#dataset-inspection')
-    main_parser.add_argument('--registration_method', choices=["simple", "eth3d", "interactive"], default="simple",
-                             help='Method used for point cloud registration. See README, Manual step by step : step 11')
 
     pcp_parser = parser.add_argument_group("PointCLoud preparation")
     pcp_parser.add_argument("--pointcloud_resolution", default=None, type=float,
                             help='If set, will subsample the Lidar point clouds at the chosen resolution')
     pcp_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
                             help="Satistical Outlier Removal parameters : Number of nearest neighbours, max relative distance to standard deviation")
+    pcp_parser.add_argument('--registration_method', choices=["simple", "eth3d", "interactive"], default="simple",
+                            help='Method used for point cloud registration. See README, Manual step by step : step 11')
 
     ve_parser = parser.add_argument_group("Video extractor")
     ve_parser.add_argument('--total_frames', default=500, type=int)
@@ -79,10 +82,8 @@ def set_argparser():
     pm_parser.add_argument('--multiple_models', action='store_true', help='If selected, will let colmap mapper do multiple models.'
                                                                           'The biggest one will then be chosen')
     pm_parser.add_argument('--more_sift_features', action="store_true")
-    pm_parser.add_argument('--save_space', action="store_true")
-    pm_parser.add_argument('--add_new_videos', action="store_true")
-    pm_parser.add_argument('--stereo_min_depth', type=float, default=0.1)
-    pm_parser.add_argument('--stereo_max_depth', type=float, default=100)
+    pm_parser.add_argument('--stereo_min_depth', type=float, default=0.1, help="Min depth for PatchMatch Stereo")
+    pm_parser.add_argument('--stereo_max_depth', type=float, default=100, help="Max depth for PatchMatch Stereo")
 
     om_parser = parser.add_argument_group("Occlusion Mesh")
     om_parser.add_argument('--normals_method', default="radius", choices=["radius", "neighbours"])

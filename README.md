@@ -130,46 +130,44 @@ You can run the whole script with ```python main_pipeline.py```. If you don't ha
 All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply`.You will find below a summary :
 
 1. Main options
+    * `--input_folder` : Input Folder with LAS/PLY point clouds, videos, and images, defined above
+    * `--workspace` : Path to workspace where COLMAP operations will be done. It needs to be on a SSD, and size needed depends on video size, but should at least be 20 Go.
+    * `--raw_output_folder` : Path to output folder for raw depth maps. Must be very big, especially with 4K videos. for 4K30fps video, count around 60Go per minute of video.
+    * `--converted_output_folder` : Path to output folder for converted depth maps and visualization. Must be big but usually smaller than raw output because depth map is still uncompressed, but downscaled.
+    * `--show_steps` : If selected, will make a dry run just to list steps and their numbers.
+    * `--skip_step` : Skip the selected steps. Can be useful an operation is done manually)
+    * `--begin_step` : Skip all steps before this step. Useful when the script failed at some point
+    * `--resume_work` : If selected, will try to skip video aready localized, and ground truth already generated
+    * `--inspect_dataset` : If selected, will open a window to inspect the dataset at key steps. See https://github.com/ETH3D/dataset-pipeline#dataset-inspection
+    * `--save_space` : If selected, will try to save space in workspace by only extracting needed frames and removing them as soon as they are no longer needed. Strongly advised.
+    * `--vid_ext` : Video extensions to scrape from input folder. By default will search for `mp4` and `MP4` files
+    * `--pic_ext` : Same as Video extensions, but for Image. By default will search for `jpg`, `JPG`, `png`and `PNG` files.
+    * `--raw_ext` : Same as Video extensions, but for RAW image. By default will search for `ARW`, `NEF` and  `DNG` files.
 
- * `--input_folder` : Input Folder with LAS/PLY point clouds, videos, and images, defined above
- * `--workspace` : Path to workspace where COLMAP operations will be done. It needs to be on a SSD, and size needed depends on video size, but should at least be 20 Go.
- * `--raw_output_folder` : Path to output folder for raw depth maps. Must be very big, especially with 4K videos. for 4K30fps video, count ~60Go per minute of video.
- * `--converted_output_folder` : Path to output folder for converted depth maps and visualization. Must be big but usually smaller than raw output because depth map is still uncompressed, but downscaled.
- * `--show_steps` : If selected, will make a dry run just to list steps and their numbers.
- * `--skip_step` : Skip the selected steps. Can be useful an operation is done manually)
- * `--begin_step` : Skip all steps before this step. Useful when the script failed at some point
- * `--resume_work` : If selected, will try to skip video aready localized, and ground truth already generated
- * `--inspect_dataset` : If selected, will open a window to inspect the dataset at key steps. See https://github.com/ETH3D/dataset-pipeline#dataset-inspection
- * `--save_space` : If selected, will try to save space in workspace by only extracting needed frames and removing them as soon as they are no longer needed. Strongly advised.
- * `--vid_ext` : Video extensions to scrape from input folder. By default will search for `mp4` and `MP4` files
- * `--pic_ext` : Same as Video extensions, but for Image. By default will search for `jpg`, `JPG`, `png`and `PNG` files.
- * `--raw_ext` : Same as Video extensions, but for RAW image. By default will search for `ARW`, `NEF` and  `DNG` files.
-
-2. Eexecutable files
-
- * `--nw` : Native wrapper location. See https://developer.parrot.com/docs/pdraw/installation.html#run-pdraw
- * `--colmap` : Colmap exec location. Usually just `Colmap` if it has been installed system-wide.
- * `--ffmpeg` : ffmpeg exec location. Usually just `ffmpeg` if it has been installed system-wide.
- * `--eth3d` : ETH3D dataset pipeline exec files folder location. Usually at `dataset-pipeline/build/`.
- * `--pcl_util` : PCL util exec files. Usually at `pcl_util/build` (source in this repo)
- * `--log` : If set, will output stdout and stderr of these exec files to a log file, which can be read from anther terminal with `tail`.
+2. Executable files
+    * `--nw` : Native wrapper location. See https://developer.parrot.com/docs/pdraw/installation.html#run-pdraw
+    * `--colmap` : Colmap exec location. Usually just `Colmap` if it has been installed system-wide.
+    * `--ffmpeg` : ffmpeg exec location. Usually just `ffmpeg` if it has been installed system-wide.
+    * `--eth3d` : ETH3D dataset pipeline exec files folder location. Usually at `dataset-pipeline/build/`.
+    * `--pcl_util` : PCL util exec files. Usually at `pcl_util/build` (source in this repo)
+    * `--log` : If set, will output stdout and stderr of these exec files to a log file, which can be read from anther terminal with `tail`.
 
 3. Lidar point cloud preparation
 
- * `--pointcloud_resolution` : If set, will subsample the Lidar point clouds at the chosen resolution.
- * `--SOR` : Satistical Outlier Removal parameters. This accepts 2 arguments : Number of nearest neighbours and max relative distance to standard deviation. See https://pcl.readthedocs.io/projects/tutorials/en/latest/statistical_outlier.html
- * `--registration_method` : Method use for point cloud registration, chose between "simple", "eth3d" and "interactive" ("simple" by default). See Manual step by step : step 11')
+    * `--pointcloud_resolution` : If set, will subsample the Lidar point clouds at the chosen resolution.
+    * `--SOR` : Satistical Outlier Removal parameters. This accepts 2 arguments : Number of nearest neighbours and max relative distance to standard deviation. See https://pcl.readthedocs.io/projects/tutorials/en/latest/statistical_outlier.html
+    * `--registration_method` : Method use for point cloud registration, chose between "simple", "eth3d" and "interactive" ("simple" by default). See Manual step by step : step 11')
 
 4. Video extractor
 
- * `--total_frames` : Total number of frames that will be used for the first thorough photogrammetry. By default 500, keep this number below 1000.
- * `--orientation_weight` : Weight applied to orientation during optimal sample. Higher means two pictures with same location but different orientation will be considered further apart.
- * `--resolution_weight` : Same as orientation, but with image size.
- * `--max_sequence_length` : COLMAP needs to load ALL the feature matches to register new frames. As such, some videos are too long to fit in RAM, and we need to divide the video in Chunks that will treated separately and then merged together. This parameter is the number max of frames for a chunk. Ideal value is around 500 frames for 1Go of RAM, regardless of resolution.
-  * `--num_neighbours` : number of frames overlapping between chunks. This is for merge purpose.
-  * `--system` : coordinates system used for GPS, should be the same as the LAS files used.
-  * `--lowfps`: framerate at which videos will be scanned WITH reconstruction. 1fps by default
-  * `--include_lowfps_thorough` : if selected, will include videos frames at lowfps for thorough scan (longer). This can be useful when some videos are not GPS localized (e.g. handhel camera) and are still relevant for the thorough photogrammetry.
+    * `--total_frames` : Total number of frames that will be used for the first thorough photogrammetry. By default 500, keep this number below 1000.
+    * `--orientation_weight` : Weight applied to orientation during optimal sample. Higher means two pictures with same location but different orientation will be considered further apart.
+    * `--resolution_weight` : Same as orientation, but with image size.
+    * `--max_sequence_length` : COLMAP needs to load ALL the feature matches to register new frames. As such, some videos are too long to fit in RAM, and we need to divide the video in Chunks that will treated separately and then merged together. This parameter is the number max of frames for a chunk. Ideal value is around 500 frames for 1Go of RAM, regardless of resolution.
+    * `--num_neighbours` : number of frames overlapping between chunks. This is for merge purpose.
+    * `--system` : coordinates system used for GPS, should be the same as the LAS files used.
+    * `--lowfps`: framerate at which videos will be scanned WITH reconstruction. 1fps by default
+    * `--include_lowfps_thorough` : if selected, will include videos frames at lowfps for thorough scan (longer). This can be useful when some videos are not GPS localized (e.g. handhel camera) and are still relevant for the thorough photogrammetry.
 
 5. Photogrammetry
 
@@ -177,7 +175,7 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
     * `--vocab_tree` : Pah to vocab tree, can be downloaded [here](https://demuc.de/colmap/#download)
     * `--multiple_models` : If selected, will let colmap mapper do multiple models. The biggest one will then be chosen
     * `--more_sift_features` : If selected, will activate the COLMAP options ` SiftExtraction.domain_size_pooling` and `--SiftExtraction.estimate_affine_shape` during feature extraction. Be careful, this does not use GPU and is thus very slow. More info : https://colmap.github.io/faq.html#increase-number-of-matches-sparse-3d-points
-    pm_parser.add_argument('--add_new_videos', action="store_true")
+    * `--add_new_videos` : If selected, will skip the mapping steps to directly register new video with respect to an already existing colmap model.
     * `--stereo_min_depth` : Min depth for PatchMatch Stereo used during point cloud densification
     * `--stereo_max_depth` : Same as min depth but for max depth.
 
