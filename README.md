@@ -153,13 +153,11 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
     * `--log` : If set, will output stdout and stderr of these exec files to a log file, which can be read from anther terminal with `tail`.
 
 3. Lidar point cloud preparation
-
     * `--pointcloud_resolution` : If set, will subsample the Lidar point clouds at the chosen resolution.
     * `--SOR` : Satistical Outlier Removal parameters. This accepts 2 arguments : Number of nearest neighbours and max relative distance to standard deviation. See https://pcl.readthedocs.io/projects/tutorials/en/latest/statistical_outlier.html
     * `--registration_method` : Method use for point cloud registration, chose between "simple", "eth3d" and "interactive" ("simple" by default). See Manual step by step : step 11')
 
 4. Video extractor
-
     * `--total_frames` : Total number of frames that will be used for the first thorough photogrammetry. By default 500, keep this number below 1000.
     * `--orientation_weight` : Weight applied to orientation during optimal sample. Higher means two pictures with same location but different orientation will be considered further apart.
     * `--resolution_weight` : Same as orientation, but with image size.
@@ -170,7 +168,6 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
     * `--include_lowfps_thorough` : if selected, will include videos frames at lowfps for thorough scan (longer). This can be useful when some videos are not GPS localized (e.g. handhel camera) and are still relevant for the thorough photogrammetry.
 
 5. Photogrammetry
-
     * `--max_num_matches` : Max number of matches, lower it if you get GPU memory error.
     * `--vocab_tree` : Pah to vocab tree, can be downloaded [here](https://demuc.de/colmap/#download)
     * `--multiple_models` : If selected, will let colmap mapper do multiple models. The biggest one will then be chosen
