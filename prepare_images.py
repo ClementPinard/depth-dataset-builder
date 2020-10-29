@@ -43,7 +43,9 @@ def extract_pictures_to_workspace(input_folder, image_path, workspace, colmap,
 
 def extract_videos_to_workspace(video_path, video_frame_list_thorough, georef_frames_list, **env):
     existing_georef, env["centroid"] = extract_gps_and_path(**env)
-    path_lists, extracted_video_folders = v2c.process_video_folder(output_video_folder=video_path, **env)
+    path_lists, extracted_video_folders = v2c.process_video_folder(output_video_folder=video_path,
+                                                                   existing_georef=existing_georef,
+                                                                   **env)
     if path_lists is not None:
         with open(video_frame_list_thorough, "w") as f:
             f.write("\n".join(path_lists["thorough"]["frames"]))

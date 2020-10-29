@@ -114,6 +114,7 @@ transform_parser = subparsers.add_parser('transform')
 transform_parser.add_argument('--input_meshlab', metavar='MLP', type=Path, required=True)
 transform_parser.add_argument('--output_meshlab', metavar='MLP', type=Path, required=True)
 transform_parser.add_argument('--transform', metavar='TXT', type=Path, required=True)
+transform_parser.add_argument('--inverse', action='store_true')
 
 
 if __name__ == '__main__':
@@ -145,4 +146,6 @@ if __name__ == '__main__':
         print("Removed model {} with transform\n {} \nfrom meshlab".format(filename, matrix))
     if args.operation == "transform":
         transform = np.fromfile(args.transform, sep=" ").reshape(4, 4)
+        if args.inverse:
+            transform = np.linalg.inverse(transform)
         apply_transform_to_project(args.input_meshlab, args.output_meshlab, transform)

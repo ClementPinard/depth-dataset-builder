@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from pyproj import Proj
 
-parser = ArgumentParser(description='Create vizualisation for specified video',
+parser = ArgumentParser(description='Add GPS localized video to colmap model (Note : Localization is not precise enough)',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--video_list', metavar='PATH',

@@ -5,12 +5,13 @@ import pandas as pd
 import numpy as np
 from sqlite3 import IntegrityError
 from tqdm import tqdm
-parser = ArgumentParser(description='Create vizualisation for specified video',
+parser = ArgumentParser(description='Add video frames to a colmap db file. '
+                        'Needs original colmap db file to link the frames to the right cameras',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--frame_list', metavar='PATH',
                     help='path to list with relative path to images', type=Path, default=None)
-parser.add_argument('--metadata', metavar='PATH',
+parser.add_argument('--metadata', metavar='PATH', required=True,
                     help='path to metadata csv file', type=Path)
 parser.add_argument('--database', metavar='DB', required=True,
                     help='path to colmap database file, to get the image ids right')

@@ -108,3 +108,6 @@ cd ../
 pip install -r requirements.txt
 
 ./build_pcl_util.sh
+
+# Note that other tree sizes are available, see https://demuc.de/colmap/#download
+wget https://demuc.de/colmap/vocab_tree_flickr100K_words256K.bin

@@ -8,7 +8,7 @@ from tqdm import tqdm
 from pyntcloud import PyntCloud
 from itertools import islice
 
-parser = ArgumentParser(description='create a vizualisation from ground truth created',
+parser = ArgumentParser(description='Convert EuroC dataset to COLMAP',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--root', metavar='DIR', type=Path)

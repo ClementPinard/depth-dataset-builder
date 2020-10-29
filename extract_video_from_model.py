@@ -6,10 +6,14 @@ import pandas as pd
 parser = ArgumentParser(description='create a new colmap model with only the frames of selected video',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--input_model', metavar='DIR', type=Path)
-parser.add_argument('--output_model', metavar='DIR', default=None, type=Path)
+parser.add_argument('--input_model', metavar='DIR', type=Path, required=True,
+                    help='folder where the cameras.bin and images.bin are located')
+parser.add_argument('--output_model', metavar='DIR', type=Path, required=True,
+                    help='Output folder where the modified COLMAP model will be saved')
 parser.add_argument('--output_format', choices=['.txt', '.bin'], default='.txt')
-parser.add_argument('--metadata_path', metavar="CSV", type=Path)
+parser.add_argument('--metadata_path', metavar="CSV", type=Path, required=True,
+                    help='Path to metadata CSV file of the desired video. '
+                    'Usually in /pictures/Videos/<size>/<video_name>/metadata.csv')
 
 
 def extract_video(input, output, video_metadata_path, output_format='.bin'):

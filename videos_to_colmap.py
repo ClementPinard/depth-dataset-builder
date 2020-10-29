@@ -18,21 +18,30 @@ parser = ArgumentParser(description='Take all the drone videos of a folder and p
 
 parser.add_argument('--video_folder', metavar='DIR',
                     help='path to videos', type=Path)
-parser.add_argument('--system', default='epsg:2154')
-parser.add_argument('--centroid_path', default=None)
-parser.add_argument('--colmap_img_root', metavar='DIR', type=Path)
-parser.add_argument('--output_format', metavar='EXT', default="bin")
-parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
-parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"])
+parser.add_argument('--system', default='epsg:2154',
+                    help='coordinates system used for GPS, should be the same as the LAS files used')
+parser.add_argument('--centroid_path', default=None, help="path to centroid generated in las2ply.py")
+parser.add_argument('--colmap_img_root', metavar='DIR', type=Path,
+                    help="folder that will be used as \"image_path\" parameter when using COLMAP", required=True)
+parser.add_argument('--output_format', metavar='EXT', default="bin", choices=["bin", "txt"],
+                    help='format of the COLMAP file that will be outputed, used for vizualisation only')
+parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"],
+                    help="format of video files that will be scraped from input folder")
+parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"],
+                    help='format of images that will be scraped from already existing images in colmap image_path folder')
 parser.add_argument('--nw', default='',
-                    help="native-wrapper.sh file location")
+                    help="native-wrapper.sh file location (see Anafi SDK documentation)")
 parser.add_argument('--fps', default=1, type=int,
                     help="framerate at which videos will be scanned WITH reconstruction")
-parser.add_argument('--total_frames', default=200, type=int)
-parser.add_argument('--orientation_weight', default=1, type=float)
-parser.add_argument('--resolution_weight', default=1, type=float)
-parser.add_argument('--save_space', action="store_true")
-parser.add_argument('--thorough_db', type=Path)
+parser.add_argument('--total_frames', default=200, type=int, help="number of frames used for thorough photogrammetry")
+parser.add_argument('--max_sequence_length', default=1000, help='Number max of frames for a chunk. '
+                    'This is for RAM purpose, as loading feature matches of thousands of frames can take up GBs of RAM')
+parser.add_argument('--orientation_weight', default=1, type=float,
+                    help="Weight applied to orientation during optimal sample. "
+                    "Higher means two pictures with same location but different orientation will be considered farer apart")
+parser.add_argument('--resolution_weight', default=1, type=float, help="same as orientation, but with image size")
+parser.add_argument('--save_space', action="store_true", help="if selected, will only extract from ffmpeg frames used for thorough photogrammetry")
+parser.add_argument('--thorough_db', type=Path, help="output db file which will be used by COLMAP for photogrammetry")
 parser.add_argument('-v', '--verbose', action="count", default=0)
 
 
@@ -144,7 +153,7 @@ def register_new_cameras(cameras_dataframe, database, camera_dict):
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
                          thorough_db, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
                          output_colmap_format="bin", save_space=False, include_lowfps_thorough=False,
-                         max_sequence_length=1000, **env):
+                         max_sequence_length=1000, num_neighbours=10, existing_georef=False, **env):
     proj = Proj(system)
     final_metadata = []
     video_output_folders = {}
@@ -227,7 +236,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     print("{} indoor anafi videos".format(videos_summary["anafi"]["indoor"]))
     print("{} generic videos".format(videos_summary["generic"]))
 
-    if(videos_summary["anafi"]["outdoor"] == 0 and videos_summary["anafi"]["indoor"] > 0):
+    if(not existing_georef and videos_summary["anafi"]["outdoor"] == 0 and videos_summary["anafi"]["indoor"] > 0):
         # We have no GPS data but we have navdata, which will help rescale the colmap model
         # Take the longest video and do as if the GPS was valid
         longest_video = indoor_video_diameters[max(indoor_video_diameters)]
@@ -352,7 +361,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                                                             num_chunks)]
         # Add some overlap between chunks, in order to ease the model merging afterwards
         for chunk, next_chunk in zip(chunks, chunks[1:]):
-            chunk.extend(next_chunk[:10])
+            chunk.extend(next_chunk[:num_neighbours])
         path_lists_output[v]["frames_full"] = chunks
 
         if save_space:

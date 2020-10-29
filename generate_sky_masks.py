@@ -86,11 +86,11 @@ def process_folder(folder_to_process, image_path, mask_path, pic_ext, verbose=Fa
 parser = ArgumentParser(description='sky mask generator using ENet trained on cityscapes',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--img_dir', metavar='DIR', default="workspace/Pictures",
+parser.add_argument('--img_dir', metavar='DIR', default=Path("workspace/Pictures"),
                     help='path to image folder root', type=Path)
-parser.add_argument('--colmap_img_root', metavar='DIR', default="workspace/Pictures", type=Path,
+parser.add_argument('--colmap_img_root', metavar='DIR', default=Path("workspace/Pictures"), type=Path,
                     help='image_path you will give to colmap when extracting feature')
-parser.add_argument('--mask_root', metavar='DIR', default="workspace/Masks",
+parser.add_argument('--mask_root', metavar='DIR', default=Path("workspace/Masks"),
                     help='where to store the generated_masks', type=Path)
 parser.add_argument("--batch_size", "-b", type=int, default=8)
 
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     network = prepare_network()
     if args.img_dir[-1] == "/":
-        args.img_dir = args.root[:-1]
+        args.img_dir = args.img_dir[:-1]
     args.mask_root.makedirs_p()
     file_exts = ['jpg', 'JPG']
 

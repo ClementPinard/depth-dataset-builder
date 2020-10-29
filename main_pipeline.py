@@ -19,12 +19,13 @@ def prepare_point_clouds(pointclouds, lidar_path, verbose, eth3d, pcl_util, SOR,
             if output_centroid is None:
                 output_centroid = centroid
         pcl_util.filter_cloud(input_file=ply, output_file=ply.stripext() + "_filtered.ply", knn=SOR[0], std=SOR[1])
-        # pcl_util.subsample(input_file=ply.stripext() + "_filtered.ply",
-        #                    output_file=ply.stripext() + "_subsampled.ply",
-        #                    resolution=pointcloud_resolution)
-
-        # converted_clouds.append(ply.stripext() + "_subsampled.ply")
-        converted_clouds.append(ply.stripext() + "_filtered.ply")
+        if pointcloud_resolution is not None:
+            pcl_util.subsample(input_file=ply.stripext() + "_filtered.ply",
+                               output_file=ply.stripext() + "_subsampled.ply",
+                               resolution=pointcloud_resolution)
+            converted_clouds.append(ply.stripext() + "_subsampled.ply")
+        else:
+            converted_clouds.append(ply.stripext() + "_filtered.ply")
     temp_mlp = env["workspace"] / "lidar_unaligned.mlp"
     mxw.create_project(temp_mlp, converted_clouds, labels=None, transforms=None)
     if len(converted_clouds) > 1:
@@ -96,9 +97,7 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Extracting Videos and selecting optimal frames for a thorough scan")
-        existing_georef, env["centroid"] = pi.extract_gps_and_path(**env)
-        env["videos_frames_folders"] = pi.extract_videos_to_workspace(existing_georef=existing_georef,
-                                                                      fps=args.lowfps, **env)
+        env["videos_frames_folders"] = pi.extract_videos_to_workspace(fps=args.lowfps, **env)
     else:
         env["videos_frames_folders"] = {}
         by_name = {v.stem: v for v in env["videos_list"]}
@@ -227,7 +226,7 @@ def main():
             eth3d.compute_normals(env["with_normals_path"], env["aligned_mlp"], neighbor_count=args.normals_neighbours)
         '''Create vis file that will tell by what images each point can be seen. We transfer this knowledge from georefrecon
         to the Lidar model'''
-        scale = np.linalg.norm(env["global_registration_matrix"], ord=2)
+        scale = np.linalg.norm(env["global_registration_matrix"][:3, :3], ord=2)
         with_normals_subsampled = env["with_normals_path"].stripext() + "_subsampled.ply"
         pcl_util.create_vis_file(env["georefrecon_ply"], env["with_normals_path"],
                                  resolution=args.mesh_resolution / scale,
@@ -235,7 +234,9 @@ def main():
         '''Compute the occlusion mesh by fooling COLMAP into thinking the lidar point cloud was made with colmap'''
         colmap.delaunay_mesh(env["occlusion_ply"], input_ply=with_normals_subsampled)
         if args.splats:
-            eth3d.create_splats(env["splats_ply"], with_normals_subsampled, env["occlusion_ply"], threshold=args.splat_threshold / scale)
+            eth3d.create_splats(env["splats_ply"], with_normals_subsampled,
+                                env["occlusion_ply"], env["splat_threshold"] / scale,
+                                env["max_splat_size"])
 
     if args.inspect_dataset:
         # First inspection : Check registration of the Lidar pointcloud wrt to COLMAP model but without the occlusion mesh

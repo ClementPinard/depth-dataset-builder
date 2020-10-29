@@ -32,12 +32,15 @@ class ETH3D(Wrapper):
             options += ["--neighbor_radius", str(neighbor_radius)]
         self.__call__(options)
 
-    def create_splats(self, output_splats, pointnormals_ply, occlusion_ply, threshold=0.1):
+    def create_splats(self, output_splats, pointnormals_ply, occlusion_ply, threshold=0.1, max_splat_size=None):
         options = ["SplatCreator", "--point_normal_cloud_path", pointnormals_ply,
                    "--mesh_path", occlusion_ply,
                    "--output_path", output_splats,
-                   "--distance_threshold", str(threshold),
-                   "--max_splat_size", str(2.5 * threshold)]
+                   "--distance_threshold", str(threshold)]
+        if max_splat_size is not None:
+            options += ["--max_splat_size", str(max_splat_size)]
+        else:
+            options += ["--max_splat_size", str(2.5 * threshold)]
         self.__call__(options)
 
     def create_ground_truth(self, scan_meshlab, colmap_model, output_folder, occlusions=None, splats=None,

@@ -3,6 +3,15 @@
 This is a set of python scripts  and c++ programs used to construct a depth validation set with a Lidar generated point cloud.
 For a brief recap of what it does, see section [How it works](#how-it-works)
 
+## Table of contents
+
+* [Software Dependencies](#software-dependencies)
+* [Hardware Dependencies](#hardware-dependencies)
+* [How it works](#how-it-works)
+* [Step by step guide](#usage)
+* [Detailed method with the manoir example](#detailed-method-with-the-manoir-example)
+
+
 ## Software Dependencies
 
 These are the used tools, make sure to install them before running the scripts.
@@ -33,6 +42,7 @@ Note that for our study, we provided the Anafi drone (\~700€), and the point c
 # How it works
 
 Here are the key steps of the dataset creation :
+See [Detailed method with the manoir example](#detailed-method-with-the-manoir-example) for a concrete example with options used.
 
 1. Data acquisition on a particular scene
     - Make a photogrammetry flight plan with any drone, You can use e.g. the Anafi with the Pix4D capture app (it's free). It is important that pictures have GPS info in the exif
@@ -47,13 +57,13 @@ Here are the key steps of the dataset creation :
 3. Extract optimal frames from video for a thorough photogrammetry that will use a mix of pix4D flight plan pictures and video still frames.
     - The total number of frame must not be too high to prevent the reconstruction from lasting too long on a single desktop (we recommand between 500 an 1000 images)
     - At the same time, extract if possible information on camera parameters to identify which video sequences share the same parameters (e.g 4K videos vs 720p videos, or different levels of zooming)
-    - This step is done by the script `video_to_colmap.py`
+    - This step is done by the script `videos_to_colmap.py`
 
 4. Georeference your images.
     - For each frame with *GPS* position, convert them in *XYZ* coorindates in the projection system used by the Lidar point cloud (Here, EPSG:2154 was used)
     - Substract to these coordinates the centroid that logged when converting the LAS file to PLY.
     - Log image filename and centered *XYZ* position in a file for georegistration of the reconstruction point cloud
-    - This step is also done by the script `video_to_colmap.py`
+    - This step is also done by the script `videos_to_colmap.py`
 
 4. Generate sky maps of your drone pictures to help the photogrammetry filter out noise during matching
     - Use a Neural Network to segment the drone picture and generate masks so that the black areas will be ignored
@@ -95,12 +105,7 @@ Here are the key steps of the dataset creation :
 12. Visualize and Convert the resulting dataset to match the format of a more well known dataset, like KITTI.
 
 
-## Detailed method with the "Manoir" example
-
-### Scene presentation
-
-### Data acquisition
-
+## Usage
 
 ### Running the full script
 
@@ -110,7 +115,7 @@ Structure your input folder so that it looks like this:
 ├── Pictures
 │   ├── anafi
 │   │   ├── raw
-│   │   ├── rectilinear
+│   │   └── rectilinear
 │   └── apn
 ├── Videos
 │   ├── 4K30
@@ -118,9 +123,72 @@ Structure your input folder so that it looks like this:
 └── Lidar
 ```
 
-You can run the whole script with ```python main_pipeline.py```
+You can run the whole script with ```python main_pipeline.py```. If you don't have a lidar point cloud and want to use COLMAP reconstructed cloud as Groundtruth, you can use ```python main_pipeline_no_lidar.py``` which will be very similar, minus point cloud cleaning and registration steps.
 
-#### Parameters brakdown
+#### Parameters breakdown
+
+All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply`.You will find below a summary :
+
+1. Main options
+
+ * `--input_folder` : Input Folder with LAS/PLY point clouds, videos, and images, defined above
+ * `--workspace` : Path to workspace where COLMAP operations will be done. It needs to be on a SSD, and size needed depends on video size, but should at least be 20 Go.
+ * `--raw_output_folder` : Path to output folder for raw depth maps. Must be very big, especially with 4K videos. for 4K30fps video, count ~60Go per minute of video.
+ * `--converted_output_folder` : Path to output folder for converted depth maps and visualization. Must be big but usually smaller than raw output because depth map is still uncompressed, but downscaled.
+ * `--show_steps` : If selected, will make a dry run just to list steps and their numbers.
+ * `--skip_step` : Skip the selected steps. Can be useful an operation is done manually)
+ * `--begin_step` : Skip all steps before this step. Useful when the script failed at some point
+ * `--resume_work` : If selected, will try to skip video aready localized, and ground truth already generated
+ * `--inspect_dataset` : If selected, will open a window to inspect the dataset at key steps. See https://github.com/ETH3D/dataset-pipeline#dataset-inspection
+ * `--save_space` : If selected, will try to save space in workspace by only extracting needed frames and removing them as soon as they are no longer needed. Strongly advised.
+ * `--vid_ext` : Video extensions to scrape from input folder. By default will search for `mp4` and `MP4` files
+ * `--pic_ext` : Same as Video extensions, but for Image. By default will search for `jpg`, `JPG`, `png`and `PNG` files.
+ * `--raw_ext` : Same as Video extensions, but for RAW image. By default will search for `ARW`, `NEF` and  `DNG` files.
+
+2. Eexecutable files
+
+ * `--nw` : Native wrapper location. See https://developer.parrot.com/docs/pdraw/installation.html#run-pdraw
+ * `--colmap` : Colmap exec location. Usually just `Colmap` if it has been installed system-wide.
+ * `--ffmpeg` : ffmpeg exec location. Usually just `ffmpeg` if it has been installed system-wide.
+ * `--eth3d` : ETH3D dataset pipeline exec files folder location. Usually at `dataset-pipeline/build/`.
+ * `--pcl_util` : PCL util exec files. Usually at `pcl_util/build` (source in this repo)
+ * `--log` : If set, will output stdout and stderr of these exec files to a log file, which can be read from anther terminal with `tail`.
+
+3. Lidar point cloud preparation
+
+ * `--pointcloud_resolution` : If set, will subsample the Lidar point clouds at the chosen resolution.
+ * `--SOR` : Satistical Outlier Removal parameters. This accepts 2 arguments : Number of nearest neighbours and max relative distance to standard deviation. See https://pcl.readthedocs.io/projects/tutorials/en/latest/statistical_outlier.html
+ * `--registration_method` : Method use for point cloud registration, chose between "simple", "eth3d" and "interactive" ("simple" by default). See Manual step by step : step 11')
+
+4. Video extractor
+
+ * `--total_frames` : Total number of frames that will be used for the first thorough photogrammetry. By default 500, keep this number below 1000.
+ * `--orientation_weight` : Weight applied to orientation during optimal sample. Higher means two pictures with same location but different orientation will be considered further apart.
+ * `--resolution_weight` : Same as orientation, but with image size.
+ * `--max_sequence_length` : COLMAP needs to load ALL the feature matches to register new frames. As such, some videos are too long to fit in RAM, and we need to divide the video in Chunks that will treated separately and then merged together. This parameter is the number max of frames for a chunk. Ideal value is around 500 frames for 1Go of RAM, regardless of resolution.
+  * `--num_neighbours` : number of frames overlapping between chunks. This is for merge purpose.
+  * `--system` : coordinates system used for GPS, should be the same as the LAS files used.
+  * `--lowfps`: framerate at which videos will be scanned WITH reconstruction. 1fps by default
+  * `--include_lowfps_thorough` : if selected, will include videos frames at lowfps for thorough scan (longer). This can be useful when some videos are not GPS localized (e.g. handhel camera) and are still relevant for the thorough photogrammetry.
+
+5. Photogrammetry
+
+    * `--max_num_matches` : Max number of matches, lower it if you get GPU memory error.
+    * `--vocab_tree` : Pah to vocab tree, can be downloaded [here](https://demuc.de/colmap/#download)
+    * `--multiple_models` : If selected, will let colmap mapper do multiple models. The biggest one will then be chosen
+    * `--more_sift_features` : If selected, will activate the COLMAP options ` SiftExtraction.domain_size_pooling` and `--SiftExtraction.estimate_affine_shape` during feature extraction. Be careful, this does not use GPU and is thus very slow. More info : https://colmap.github.io/faq.html#increase-number-of-matches-sparse-3d-points
+    pm_parser.add_argument('--add_new_videos', action="store_true")
+    * `--stereo_min_depth` : Min depth for PatchMatch Stereo used during point cloud densification
+    * `--stereo_max_depth` : Same as min depth but for max depth.
+
+6. Occlusion Mesh
+    * `--normals_method` : Method used for normal computation between radius and nearest neighbours.
+    * `--normals_radius` : If radius method for normals, radius within which other points will be considered neighbours
+    * `--normals_neighbours` : If nearest neighbours method chosen, number of neighbours to consider. Could be very close or very far points, but has a constant complexity.
+    * `--mesh_resolution` : Mesh resolution for occlusion in meters. Higher means more coarse. (default 0.2, i.e. 20cm)
+    * `--splats` : If selected, will create splats for points in the cloud that are far from the occlusion mesh.
+    * `--splat_threshold` : Distance from occlusion mesh at which a splat will be created for a particular point (default, 10cm)
+    * `--max_splate_size` : Splat size is defined by mean istance from its neighbours. You can define a max splat size for isolated points which otherwise would make a very large useless splat. If not set, will be `2.5*splat_threshold`.
 
 ### Manual step by step
 
@@ -130,9 +198,12 @@ This will essentially do the same thing as the script, in order to let you chang
 
     ```
     python las2ply.py /path/to/cloud.las \
-    --output_ply /path/to/cloud_lidar.ply
-    --output_txt /path/to/centroid.txt
+    --output_folder /path/to/output_folder
     ```
+
+    This will save a ply file along with a centroid file
+     - `/path/to/output_folder/cloud.ply`
+     - `/path/to/output_folder/centroid.txt`
 
 
 2. Point Cloud Cleaning
@@ -140,8 +211,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
     ```
     ETHD3D/build/PointCloudCleaner \
-    --in /path/to/cloud_lidar.ply \
-    --filter <5,10>
+    --in /path/to/output_folder/cloud.ply \
+    --filter 5,10
     ```
     (local outliers removal, doesn't necessarily remove isolated points)
     or
@@ -159,7 +230,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --output_meshlab /path/to/lidar.mlp
     ```
 
-    Optionally, if we have multiple lidar scans (which is not the case here), we can run a registration step with ETH3D
+    Optionally, if we have multiple lidar scans, we can run a registration step with ETH3D
 
     ```
     ETHD3D/build/ICPScanAligner \
@@ -187,16 +258,16 @@ This will essentially do the same thing as the script, in order to let you chang
     --ImageReader.single_camera_per_folder 1 \
     ```
 
-    We don't need to extract features before having video frames, but this will populate the `/path/to/scan.db` file with the photogrammetry pictures and corresponding id that will be reserved for future version of the file. Besides, it automatically set a camera per folder too.
+    We don't explicitely need to extract features before having video frames, but this will populate the `/path/to/scan.db` file with the photogrammetry pictures and corresponding id that will be reserved for future version of the file. Besides, it automatically set a camera per folder too.
 
 5. Video frame addition to COLMAP db file
 
     ```
-    python video_to_colmap \
+    python video_to_colmap.py \
     --video_folder /path/to/videos \
     --system epsg:2154 \
     --centroid_path /path/to/centroid.txt \
-    --output_folder /path/to/pictures/videos \
+    --colmap_img_root /path/to/images \
     --nw /path/to/anafi/native-wrapper.sh \
     --fps 1 \
     --total_frames 1000 \
@@ -204,10 +275,12 @@ This will essentially do the same thing as the script, in order to let you chang
     --thorough_db /path/to/scan.db
     ```
 
-    The video to colmap step will populate the scan db with new entries with the right camera parameters. And select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
+    The video to colmap step will populate the scan db with new entries with the right camera parameters, and select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
     It will also create several txt files with list of file paths :
      - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry
      - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file.
+
+    The system parameter (here epsg:2154) is the one used in the point cloud. The geo localized frame will then be localized inside the point cloud, which will help register the COLMAP reconstructed point with the Lidar PointCloud. See more info [here](https://en.wikipedia.org/wiki/Spatial_reference_system). It must be compatible with [Proj](https://proj.org).
 
     And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
 
@@ -267,20 +340,22 @@ This will essentially do the same thing as the script, in order to let you chang
 
     ```
     mkdir -p /path/to/thorough/
-    colmap mapper --Mapper.multiple_models 0 --database_path scan.db --output_path /path/to/thorough/ --image_path images
+    colmap mapper --database_path scan.db --output_path /path/to/thorough/ --image_path images
     ```
 
-    This will create a model file in the folder `output/sparse` (or `output/sparse/0`), in the form of 3 files
+    This will create multiple models located in folder named `output/sparse/N` , `N`being a number, starting from 0. Each model will be, in the form of 3 files
     ```
     └── thorough
-        └── 0
+        └── N
             ├── cameras.bin
             ├── images.bin
             ├── points3D.bin
             └── project.ini
     ```
 
-    You can also add a last bundle adjustment using Ceres, supposedly better than the multicore used in mapper (albeit slower)
+    COLMAP creates multiple models in the case the model has multiple sets of images that don't overlap. Most of the time, there will be only 1 model (named `0`). Depending on the frame used for initialization, it can happen that the biggest model is not the first. Here we will assume that it is indeed the first (`0`), but you are exepcted to change that number if it is not the most complete model COLMAP could construct.
+
+    You can finally add a last bundle adjustment using Ceres, supposedly better than the multicore used in mapper (albeit slower)
 
     ```
     colmap bundle_adjuster \
@@ -305,7 +380,7 @@ This will essentially do the same thing as the script, in order to let you chang
 10. Video Localization
     All these substep will populate the db file, which is then used for matching. So you need to make a copy for each video.
 
-    1. Extract all the frames of the video to same directory the `video_to_colmap.py` script exported the frame subset of this video.
+    1. Extract all the frames of the video to same directory the `videos_to_colmap.py` script exported the frame subset of this video.
 
         ```
         ffmpeg \
@@ -443,7 +518,7 @@ This will essentially do the same thing as the script, in order to let you chang
         --output_format txt
         ```
 
-    7. Filter the image sequence to exclude frame with an absurd acceleration and interpolate them instead
+    7. Filter the image sequence to exclude frame with an absurd acceleration and interpolate them instead. We keep a track of interpolated frames, which will not be used for depth validation but can be used for depth estimation algorithms that need odometry of previous frames.
         ```
         python filter_colmap_model.py \
         --input_images_colmap /path/to/final_model/images.txt \
@@ -506,7 +581,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     The second matrix in `/path/to/register.mlp` will be the matrix transform from `/path/to/lidar.mlp` to `/path/to/georef_dense.ply`
 
-    Importante note : This operation doesn't work for scale adjustments which can be a problem with very large models.
+    Importante note : This operation doesn't work for scale adjustments. Theoretically, if the video frames are gps localized, it should no be a problem, but it can be a problem with very large models where a small scale error will be responsible for large displacement errors locally.
 
     Option 2 : construct a PLY file from lidar scans and register the reconstructed cloud with respect to the lidar, with PCL or CloudCompare. We do this way (and not from lidar to reconstructed), because it is usually easier to register the cloud with less points with classic ICP)
     ```
@@ -526,10 +601,11 @@ This will essentially do the same thing as the script, in order to let you chang
 
     Or use CloudCompare : https://www.cloudcompare.org/doc/wiki/index.php?title=Alignment_and_Registration
     Best results were maintened with these consecutive steps :
-    - Crop the /path/georef_dense.ply cloud, otherwise the Octomap will be very inefficient, and the cloud usually has very far outliers
-    - Apply noise filtering on cropped cloud
-    - Apply fine registration, with final overlap of 50%, scale adjustment, and Enable farthest point removal
-    - Save inverse of resulting registration
+    - Crop the /path/georef_dense.ply cloud, otherwise the Octomap will be very inefficient, and the cloud usually has very far outliers. See [Cross section](https://www.cloudcompare.org/doc/wiki/index.php?title=Cross_Section).
+    - Apply noise filtering on cropped cloud . See [Noise filter](https://www.cloudcompare.org/doc/wiki/index.php?title=Noise_filter).
+    - (Optional, especially if the frames are gps localized) Manually apply a rough registration with point pair picking. See [Align](https://www.cloudcompare.org/doc/wiki/index.php?title=Align).
+    - Apply fine registration, with final overlap of 50%, scale adjustment, and Enable farthest point removal. See [ICP](https://www.cloudcompare.org/doc/wiki/index.php?title=ICP)
+    - Save resulting registration matrix
 
     For the fine registration part, as said earlier, the aligned cloud is the reconstruction and the reference cloud is the lidar
 
@@ -540,6 +616,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --input_meshlab /path/to/lidar.mlp \
     --output_meshlab /path/to/registered.mlp \
     --transform /path/to/registration_matrix.txt
+    --inverse
     ```
 
 13. Occlusion Mesh generation
@@ -581,6 +658,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --mesh_path /path/to/occlusion_mesh.ply \
     --output_path /path/to/splats.ply
     --distance_threshold 0.1
+    --max_splat_size 0.25
     ```
 
     The ideal distance threshold is what is considered close range of the occlusion mesh, and the distance from which a splat (little square surface) will be created.
@@ -624,3 +702,9 @@ This will essentially do the same thing as the script, in order to let you chang
     --downscale 4 \
     --threads 8
     ```
+
+## Detailed method with the "Manoir" example
+
+### Scene presentation
+
+### Data acquisition

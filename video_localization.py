@@ -261,7 +261,9 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                        raw_output_folder / "occlusion_depth" / video_name.stem,
                        kitti_format_folder, viz_folder,
                        metadata, interpolated_frames_list,
-                       video=True, downscale=4, threads=8, **env)
+                       vizualisation=True, video=True, downscale=4, threads=8, **env)
     interpolated_frames_list.copy(kitti_format_folder)
+    if save_space:
+        (raw_output_folder / "occlusion_depth" / video_name.stem).rmtree_p()
 
     return

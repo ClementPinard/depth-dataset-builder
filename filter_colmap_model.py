@@ -7,15 +7,27 @@ import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from scipy.spatial.transform import Rotation, Slerp
 
-parser = ArgumentParser(description='Take all the drone videos of a folder and put the frame '
-                                    'location in a COLMAP file for vizualisation',
+parser = ArgumentParser(description='Filter COLMAP model of a single video by discards frames with impossible acceleration. '
+                                    'The script then interplate dismissed frames and smooth out the trajectory with a SavGol filter.',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('--input_images_colmap', metavar='FILE', type=Path)
-parser.add_argument('--output_images_colmap', metavar='FILE', type=Path)
-parser.add_argument('--metadata', metavar='FILE', type=Path)
+parser.add_argument('--input_images_colmap', metavar='FILE', type=Path, required=True,
+                    help='Input COLMAP images.bin file to filter.')
+parser.add_argument('--metadata', metavar='FILE', type=Path, required=True,
+                    help='Metadata CSV file of filtered video')
+parser.add_argument('--output_images_colmap', metavar='FILE', type=Path, required=True,
+                    help='Output images.bin file with filtere frame localizations')
+parser.add_argument('--interpolated_frames_list', type=Path, required=True,
+                    help='Outpt list containing interpolated frames in order to discard them from ground-truth validation')
+parser.add_argument('--filter_degree', default=3, type=int,
+                    help='Degree of SavGol filter, higher means less filtering and more neighbouring frames')
+parser.add_argument('--filter_time', default=0.1, type=float,
+                    help='Time windows used by filter. Must be enough frames for filter degree')
 parser.add_argument('--visualize', action="store_true")
-parser.add_argument('--interpolated_frames_list', type=Path)
+parser.add_argument('--threshold_t', default=0.01, type=float,
+                    help='Authorized deviation from SavGol filter output for position. Above, frame will be discarded')
+parser.add_argument('--threshold_q', default=5e-3, type=float,
+                    help='Same as threshold_t but for orientation with quaternions')
 
 
 '''
@@ -68,7 +80,7 @@ def slerp_quats(quat_df, prefix=""):
     valid_index = valid_df.index
     total_index = quat_df.index
 
-    # Note that scipy uses a different order convention than colmap
+    # Note that scipy uses a different order convention than colmap : XYZW instead of WXYZ
     quats = Rotation.from_quat(valid_df[["{}q{}".format(prefix, col) for col in list("xyzw")]].values)
     slerp = Slerp(valid_index, quats)
     quats = slerp(total_index).as_quat()

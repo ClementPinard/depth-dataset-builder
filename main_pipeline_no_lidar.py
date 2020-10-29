@@ -139,7 +139,9 @@ def main():
         print_step(i, "Occlusion Mesh computing")
         colmap.delaunay_mesh(env["occlusion_ply"], input_ply=env["georefrecon_ply"])
         if args.splats:
-            eth3d.create_splats(env["splats_ply"], env["georefrecon_ply"].stripext() + "_filtered.ply", env["occlusion_ply"], threshold=args.splat_threshold)
+            eth3d.create_splats(env["splats_ply"], env["georefrecon_ply"].stripext() + "_filtered.ply",
+                                env["occlusion_ply"], env["splat_threshold"],
+                                env["max_splat_size"])
 
     if args.inspect_dataset:
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],

@@ -16,36 +16,55 @@ def set_argparser():
     main_parser.add_argument('--converted_output_folder', metavar='PATH', default=Path("."),
                              help='path to output folder : must be big !', type=Path)
 
-    main_parser.add_argument('--skip_step', metavar="N", nargs="*", default=[], type=int)
+    main_parser.add_argument('--skip_step', metavar="N", nargs="*", default=[], type=int,
+                             help='Skip selected steps')
     main_parser.add_argument('--begin_step', metavar="N", type=int, default=None)
     main_parser.add_argument('--show_steps', action="store_true")
     main_parser.add_argument('-v', '--verbose', action="count", default=0)
-    main_parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"])
-    main_parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"])
-    main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"])
-    main_parser.add_argument('--resume_work', action="store_true")
-    main_parser.add_argument('--inspect_dataset', action="store_true")
-    main_parser.add_argument('--registration_method', choices=["simple", "eth3d", "interactive"], default="simple")
+    main_parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"],
+                             help='Video extensions to scrape from input folder')
+    main_parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"],
+                             help='Image extensions to scrape from input folder')
+    main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"],
+                             help='Raw Image extensions to scrape from input folder')
+    main_parser.add_argument('--resume_work', action="store_true",
+                             help='If selected, will try to skip video aready localized, and ground truth already generated')
+    main_parser.add_argument('--inspect_dataset', action="store_true",
+                             help='If selected, will open a window to inspect the dataset. '
+                                  'See https://github.com/ETH3D/dataset-pipeline#dataset-inspection')
+    main_parser.add_argument('--registration_method', choices=["simple", "eth3d", "interactive"], default="simple",
+                             help='Method used for point cloud registration. See README, Manual step by step : step 11')
 
     pcp_parser = parser.add_argument_group("PointCLoud preparation")
-    pcp_parser.add_argument("--pointcloud_resolution", default=0.1, type=float)
-    pcp_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float)
+    pcp_parser.add_argument("--pointcloud_resolution", default=None, type=float,
+                            help='If set, will subsample the Lidar point clouds at the chosen resolution')
+    pcp_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
+                            help="Satistical Outlier Removal parameters : Number of nearest neighbours, max relative distance to standard deviation")
 
     ve_parser = parser.add_argument_group("Video extractor")
     ve_parser.add_argument('--total_frames', default=500, type=int)
-    ve_parser.add_argument('--orientation_weight', default=1, type=float)
-    ve_parser.add_argument('--resolution_weight', default=1, type=float)
-    ve_parser.add_argument('--num_neighbours', default=10, type=int)
-    ve_parser.add_argument('--system', default="epsg:2154")
-    ve_parser.add_argument('--lowfps', default=1, type=int)
-    ve_parser.add_argument('--max_sequence_length', default=4000, type=int)
+    ve_parser.add_argument('--orientation_weight', default=1, type=float,
+                           help="Weight applied to orientation during optimal sample. "
+                           "Higher means two pictures with same location but different "
+                           "orientation will be considered farer apart")
+    ve_parser.add_argument('--resolution_weight', default=1, type=float,
+                           help="same as orientation, but with image size")
+    ve_parser.add_argument('--num_neighbours', default=10, type=int,
+                           help='Number of frame shared between subsequent chunks')
+    ve_parser.add_argument('--system', default="epsg:2154",
+                           help='coordinates system used for GPS, should be the same as the LAS files used')
+    ve_parser.add_argument('--lowfps', default=1, type=int,
+                           help="framerate at which videos will be scanned WITH reconstruction")
+    ve_parser.add_argument('--max_sequence_length', default=4000, type=int,
+                           help='Number max of frames for a chunk. '
+                           'This is for RAM purpose, as loading feature matches of thousands of frames can take up GBs of RAM')
     ve_parser.add_argument('--include_lowfps_thorough', action='store_true',
                            help="if selected, will include videos frames at lowfps for thorough scan (longer)")
 
     exec_parser = parser.add_argument_group("Executable files")
     exec_parser.add_argument('--log', default=None, type=Path)
     exec_parser.add_argument('--nw', default="native-wrapper.sh", type=Path,
-                             help="native-wrapper.sh file location")
+                             help="native-wrapper.sh file location (see Anafi SDK documentation)")
     exec_parser.add_argument("--colmap", default="colmap", type=Path,
                              help="colmap exec file location")
     exec_parser.add_argument("--eth3d", default="../dataset-pipeline/build",

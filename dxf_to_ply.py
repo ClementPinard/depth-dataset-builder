@@ -59,7 +59,7 @@ def edges2triangles(edges):
     return vertices, faces
 
 
-parser = ArgumentParser(description='convert a dxf file with only edges to a faced mesh, only counting triangles',
+parser = ArgumentParser(description='Convert a dxf file with only edges to a faced mesh, only counting triangles',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--dxf', default="manoir.dxf",
@@ -67,7 +67,7 @@ parser.add_argument('--dxf', default="manoir.dxf",
 parser.add_argument('--centroid_path', default="centroid.txt",
                     help='txt containing the centroid computed with las2ply.py')
 parser.add_argument('--output', default=None,
-                    help="output file name. By default, will be dxf path with \".dxf\" replace with \"ply\"")
+                    help="output file name. By default, will be dxf path with \".dxf\" replaced with \"ply\"")
 
 
 def main():

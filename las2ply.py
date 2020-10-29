@@ -9,7 +9,7 @@ parser = ArgumentParser(description='Convert las cloud to ply along with centroi
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('las', type=Path,
-                    help='path to video folder root')
+                    help='Path to las file. Note that this script is compatible with PLY')
 parser.add_argument('--output_folder', metavar='PATH',
                     default=None, type=Path,
                     help="where to save ply file and txt centroid")
@@ -27,7 +27,8 @@ def load_and_convert(input_file, output_folder, verbose=False):
     else:
         offset = np.zeros(3)
     cloud = PyntCloud.from_file(input_file)
-    print(cloud.points)
+    if verbose:
+        print(cloud.points)
 
     points = cloud.points
     xyz = points[['x', 'y', 'z']]
@@ -64,4 +65,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.output_folder is None:
         args.output_folder = args.las_path.parent
-    load_and_convert(args.las_path, args.output_folder, args.verbose)
+    load_and_convert(args.las, args.output_folder, args.verbose)
