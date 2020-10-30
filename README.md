@@ -375,13 +375,13 @@ This will essentially do the same thing as the script, in order to let you chang
 10. Video Localization
     All these substep will populate the db file, which is then used for matching. So you need to make a copy for each video.
 
-    1. Extract all the frames of the video to same directory the `videos_to_colmap.py` script exported the frame subset of this video.
+    1. If `--save_space` option was used during step 5. when calling script `video_to_colmap.py` , you now need to extract all the frames of the video to same directory the `videos_to_colmap.py` script exported the frame subset of this video.
 
         ```
         ffmpeg \
         -i /path/to/video.mp4 \
         -vsync 0 -qscale:v 2 \
-        /path/to/images/videos/dir/
+        /path/to/images/videos/dir/<video_name>_%05d.jpg
         ```
 
     2. continue mapping with low fps images, use sequential matcher
