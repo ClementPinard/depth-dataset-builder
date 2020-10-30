@@ -287,7 +287,7 @@ This will essentially do the same thing as the script, in order to let you chang
     python generate_sky_masks.py \
     --img_dir /path/to/images \
     --colmap_img_root /path/to/images \
-    --maskroot /path/to/images_mask \
+    --mask_root /path/to/images_mask \
     --batch_size 8
     ```
 
@@ -390,7 +390,7 @@ This will essentially do the same thing as the script, in order to let you chang
         python generate_sky_masks.py \
         --img_dir /path/to/images/videos/dir \
         --colmap_img_root /path/to/images \
-        --maskroot /path/to/images_mask \
+        --mask_root /path/to/images_mask \
         --batch_size 8
         ```
 
@@ -421,6 +421,8 @@ This will essentially do the same thing as the script, in order to let you chang
         --input /path/to/geo_registered_model \
         --output /path/to/lowfps_model \
         --Mapper.fix_existing_images 1
+        --database_path /path/to/video_scan.db \
+        --image_path /path/to/images
         ```
 
     3.  Re-georeference the model
@@ -430,8 +432,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         colmap model_merger \
-        --input1 /path/to/geo_registered_model \
-        --input2 /path/to/lowfps_model \
+        --input_path1 /path/to/geo_registered_model \
+        --input_path2 /path/to/lowfps_model \
         --output /path/to/lowfps_model
         ```
 
@@ -439,8 +441,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         colmap model_merger \
-        --input1 /path/to/geo_registered_model \
-        --input2 /path/to/lowfps_model \
+        --input_path1 /path/to/geo_registered_model \
+        --input_path2 /path/to/lowfps_model \
         --output /path/to/georef_full
         ```
 
