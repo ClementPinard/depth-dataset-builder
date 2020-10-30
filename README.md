@@ -277,7 +277,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     The system parameter (here epsg:2154) is the one used in the point cloud. The geo localized frame will then be localized inside the point cloud, which will help register the COLMAP reconstructed point with the Lidar PointCloud. See more info [here](https://en.wikipedia.org/wiki/Spatial_reference_system). It must be compatible with [Proj](https://proj.org).
 
-    And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames)
+    And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames). Each chunk will have the list of frames stored in a file `full_chunk_N.txt` inside the Video folder.
 
 
 6. Second part of first COLMAP step : feature extraction for video frames used for thorough photogrammetry
@@ -448,8 +448,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
         For next videos, replace input1 with `/path/to/georef_full` , which will incrementally add more and more images to the model.
 
-    5. Register the remaining frames of the videos, without mapping. This is done by chunks in order to avoid RAM problems.
-        For each Chunk `n`, copy a copy of the scan database and do the same operations as above, minus the mapping, replaced with image registration.
+    5. Register the remaining frames of the videos, without mapping. This is done by chunks in order to avoid RAM problems. Chunks are created during step 5, when calling script `videos_to_colmap.py`. For each chunk `N`, make a copy of the scan database and do the same operations as above, minus the mapping, replaced with image registration.
 
         ```
         cp /path/to/video_scan.db /path/to/video_scan_chunk_n.db
@@ -457,7 +456,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         python add_video_to_db.py \
-        --frame_list /path/to/images/videos/dir/full_n.txt \
+        --frame_list /path/to/images/videos/dir/full_chunk_n.txt \
         --metadata /path/to/images/videos/dir/metadata.csv\
         --database /path/to/video_scan_chunk_n.db
         ```
@@ -704,4 +703,72 @@ This will essentially do the same thing as the script, in order to let you chang
 
 ### Scene presentation
 
-### Data acquisition
+The scene is a Manoir in french country side
+ - Terrain dimensions : 350m x 100m
+ - Max altitude : 20m
+
+<img src="/images/plan1.jpg"  width="600">
+
+
+### Lidar Data acquisition
+
+3D Lidar data was captured by a DJI Matrice 600 with a Velodyne VLP-16 on board, with RTK GPS system.
+
+<img src="/images/drone1.jpg"  width="300">
+<img src="/images/drone2.jpg"  width="300">
+
+### Photogrammetry images acquisition
+
+For photogrammetry oriented pictures, we used an Anafi drone with the Pix4D app that lets us make one grid and two orbits above the field we wanted to scan. We also used a personal DSLR (Sony alpha-6000) for additional photo.
+
+<img src="/images/plan2.jpg"  width="200">
+<img src="/images/plan3.jpg"  width="200">
+<img src="/images/plan4.jpg"  width="200">
+
+Here is a vizualisation of the resulting point cloud :
+
+<img src="/images/pointcloud1.jpg"  width="600">
+<img src="/images/pointcloud1.jpg"  width="600">
+
+### Piloting videos acquisition
+
+We took videos a two different quality settings : 
+ - 4K, 30fps very good quality
+ - 720p, 120 fps bad quality (but high framerate)
+
+We have 65k frames in total.
+
+<img src="/images/piloting1.jpg"  width="600">
+<img src="/images/piloting2.jpg"  width="600">
+
+### Optimal video sampling
+
+The first image shows the video localisation with each other according to anafi metadata. (made with COLMAP gui)
+The second image shows the frames that have been kept in order to stay at 1000 frames with an optimal spatial sampling.
+
+<img src="/images/optimal_sample1.jpg"  width="600">
+<img src="/images/optimal_sample2.jpg"  width="600">
+
+### Thorough photogrammetry
+
+Thorough photogrammetry was done with 1000 frames. Notice that not all the area was mapped. It is expected to be completed once we take care of each video.
+
+<img src="/images/photog1.jpg"  width="600">
+
+### Video localisation
+
+<img src="/images/photog2.jpg"  width="600">
+
+### Dataset inspection
+
+ - First image : black and white drone image
+ - Second image : depth map vizualisation
+ - Third image : Occlusion depth map
+
+<img src="/images/result1.jpg"  width="600">
+<img src="/images/result3.jpg"  width="600">
+<img src="/images/result3.jpg"  width="600">
+
+### Resulting video
+
+[![Alt text](https://img.youtube.com/vi/NLIvrzUB9bY/0.jpg)](https://www.youtube.com/watch?v=NLIvrzUB9bY&list=PLMeM2q87QjqjAAbg8RD3F_J5D7RaTMAJj)
