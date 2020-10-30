@@ -766,7 +766,7 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
  - Third image : Occlusion depth map
 
 ![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result1.jpg)
-![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result3.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result2.jpg)
 ![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result3.jpg)
 
 ### Resulting video
