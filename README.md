@@ -297,7 +297,7 @@ This will essentially do the same thing as the script, in order to let you chang
     colmap feature_extractor \
     --database_path /path/to/scan.db \
     --image_path /path/to/images \
-    --image_list_path /path/to/images/video_frames_for_thorough_scan.txt
+    --image_list_path /path/toimages/video_frames_for_thorough_scan.txt
     --ImageReader.mask_path Path/to/images_mask/ \
     ```
 
@@ -365,7 +365,7 @@ This will essentially do the same thing as the script, in order to let you chang
     colmap model_aligner \
     --input_path /path/to/thorough/0/ \
     --output_path /path/to/geo_registered_model \
-    --ref_images_path /path/to/images/georef.txt
+    --ref_images_path /path/toimages/georef.txt
     --robust_alignment_max_error 5
     ```
 
@@ -381,14 +381,14 @@ This will essentially do the same thing as the script, in order to let you chang
         ffmpeg \
         -i /path/to/video.mp4 \
         -vsync 0 -qscale:v 2 \
-        /path/to/images/videos/dir/<video_name>_%05d.jpg
+        /path/toimages/videos/dir/<video_name>_%05d.jpg
         ```
 
     2. continue mapping with low fps images, use sequential matcher
 
         ```
         python generate_sky_masks.py \
-        --img_dir /path/to/images/videos/dir \
+        --img_dir /path/toimages/videos/dir \
         --colmap_img_root /path/to/images \
         --mask_root /path/to/images_mask \
         --batch_size 8
@@ -396,8 +396,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         python add_video_to_db.py \
-        --frame_list /path/to/images/videos/dir/lowfps.txt \
-        --metadata /path/to/images/videos/dir/metadata.csv\
+        --frame_list /path/toimages/videos/dir/lowfps.txt \
+        --metadata /path/toimages/videos/dir/metadata.csv\
         --database /path/to/video_scan.db
         ```
 
@@ -405,7 +405,7 @@ This will essentially do the same thing as the script, in order to let you chang
         colmap feature_extractor \
         --database_path /path/to/video_scan.db \
         --image_path /path/to/images \
-        --image_list_path /path/to/images/videos/dir/lowfps.txt
+        --image_list_path /path/toimages/videos/dir/lowfps.txt
         --ImageReader.mask_path Path/to/images_mask/
         ```
 
@@ -456,8 +456,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         python add_video_to_db.py \
-        --frame_list /path/to/images/videos/dir/full_chunk_n.txt \
-        --metadata /path/to/images/videos/dir/metadata.csv\
+        --frame_list /path/toimages/videos/dir/full_chunk_n.txt \
+        --metadata /path/toimages/videos/dir/metadata.csv\
         --database /path/to/video_scan_chunk_n.db
         ```
 
@@ -465,7 +465,7 @@ This will essentially do the same thing as the script, in order to let you chang
         colmap feature_extractor \
         --database_path /path/to/video_scan_chunk_n.db \
         --image_path /path/to/images \
-        --image_list_path /path/to/images/videos/dir/full_n.txt
+        --image_list_path /path/toimages/videos/dir/full_n.txt
         --ImageReader.mask_path Path/to/images_mask/
         ```
 
@@ -510,7 +510,7 @@ This will essentially do the same thing as the script, in order to let you chang
         python extract_video_from_model.py \
         --input_model /path/to/full_video_model \
         --output_model /path/to/final_model \
-        --metadata_path /path/to/images/video/dir/metadata.csv
+        --metadata_path /path/toimages/video/dir/metadata.csv
         --output_format txt
         ```
 
@@ -519,8 +519,8 @@ This will essentially do the same thing as the script, in order to let you chang
         python filter_colmap_model.py \
         --input_images_colmap /path/to/final_model/images.txt \
         --output_images_colmap /path/to/final_model/images.txt \
-        --metadata /path/to/images/video/dir/metadata.csv \
-        --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt
+        --metadata /path/toimages/video/dir/metadata.csv \
+        --interpolated_frames_list /path/toimages/video/dir/interpolated_frames.txt
         ```
     At the end of these per-video-tasks, you should have a model at `/path/to/georef_full` with all photogrammetry images + localization of video frames at 1fps, and for each video a TXT file with positions with respect to the first geo-registered reconstruction.
 
@@ -687,12 +687,12 @@ This will essentially do the same thing as the script, in order to let you chang
     ```
     python convert_dataset.py \
     --depth_dir /path/to/raw_GT/groundtruth_depth/<video name>/ \
-    --images_root_folder /path/to/images/ \
+    --images_root_folder /path/toimages/ \
     --occ_dir /path/to/raw_GT/occlusion_depth/<video name>/ \
-    --metadata_path /path/to/images/videos/dir/metadata.csv \
+    --metadata_path /path/toimages/videos/dir/metadata.csv \
     --dataset_output_dir /path/to/dataset/ \
     --video_output_dir /path/to/vizualisation/ \
-    --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt \
+    --interpolated_frames_list /path/toimages/video/dir/interpolated_frames.txt \
     --final_model /path/to/final_model/ \
     --video \
     --downscale 4 \
@@ -707,28 +707,28 @@ The scene is a Manoir in french country side
  - Terrain dimensions : 350m x 100m
  - Max altitude : 20m
 
-<img src="/images/plan1.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/plan1.jpg]
 
 
 ### Lidar Data acquisition
 
 3D Lidar data was captured by a DJI Matrice 600 with a Velodyne VLP-16 on board, with RTK GPS system.
 
-<img src="/images/drone1.jpg"  width="300">
-<img src="/images/drone2.jpg"  width="300">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/drone1.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/drone2.jpg)
 
 ### Photogrammetry images acquisition
 
 For photogrammetry oriented pictures, we used an Anafi drone with the Pix4D app that lets us make one grid and two orbits above the field we wanted to scan. We also used a personal DSLR (Sony alpha-6000) for additional photo.
 
-<img src="/images/plan2.jpg"  width="200">
-<img src="/images/plan3.jpg"  width="200">
-<img src="/images/plan4.jpg"  width="200">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/plan2.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/plan3.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/plan4.jpg)
 
 Here is a vizualisation of the resulting point cloud :
 
-<img src="/images/pointcloud1.jpg"  width="600">
-<img src="/images/pointcloud1.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/pointcloud1.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/pointcloud2.jpg)
 
 ### Piloting videos acquisition
 
@@ -738,26 +738,26 @@ We took videos a two different quality settings :
 
 We have 65k frames in total.
 
-<img src="/images/piloting1.jpg"  width="600">
-<img src="/images/piloting2.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/piloting1.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/piloting2.jpg)
 
 ### Optimal video sampling
 
 The first image shows the video localisation with each other according to anafi metadata. (made with COLMAP gui)
 The second image shows the frames that have been kept in order to stay at 1000 frames with an optimal spatial sampling.
 
-<img src="/images/optimal_sample1.jpg"  width="600">
-<img src="/images/optimal_sample2.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/optimal_sample1.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/optimal_sample2.jpg)
 
 ### Thorough photogrammetry
 
 Thorough photogrammetry was done with 1000 frames. Notice that not all the area was mapped. It is expected to be completed once we take care of each video.
 
-<img src="/images/photog1.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/photog1.jpg)
 
 ### Video localisation
 
-<img src="/images/photog2.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/photog2.jpg)
 
 ### Dataset inspection
 
@@ -765,9 +765,9 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
  - Second image : depth map vizualisation
  - Third image : Occlusion depth map
 
-<img src="/images/result1.jpg"  width="600">
-<img src="/images/result3.jpg"  width="600">
-<img src="/images/result3.jpg"  width="600">
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result1.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result3.jpg)
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/result3.jpg)
 
 ### Resulting video
 
