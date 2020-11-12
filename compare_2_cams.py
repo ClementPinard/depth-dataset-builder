@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation
 
 parser = ArgumentParser(description='Take all the drone videos of a folder and put the frame '
-                                    'location in a COLMAP file for vizualisation',
+                                    'location in a COLMAP file for visualization',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--input_images_1', metavar='FILE', type=Path)

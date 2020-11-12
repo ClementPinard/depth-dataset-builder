@@ -12,11 +12,11 @@ parser = ArgumentParser(description='Filter COLMAP model of a single video by di
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--input_images_colmap', metavar='FILE', type=Path, required=True,
-                    help='Input COLMAP images.bin file to filter.')
+                    help='Input COLMAP images.bin or images.txt file to filter.')
 parser.add_argument('--metadata', metavar='FILE', type=Path, required=True,
                     help='Metadata CSV file of filtered video')
 parser.add_argument('--output_images_colmap', metavar='FILE', type=Path, required=True,
-                    help='Output images.bin file with filtere frame localizations')
+                    help='Output images.bin or images.txt file with filtered frame localizations')
 parser.add_argument('--interpolated_frames_list', type=Path, required=True,
                     help='Outpt list containing interpolated frames in order to discard them from ground-truth validation')
 parser.add_argument('--filter_degree', default=3, type=int,
@@ -279,7 +279,12 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path
                                                    camera_id=row["camera_id"],
                                                    name=row["image_path"],
                                                    xys=[], point3D_ids=[])
-        rm.write_images_text(smoothed_images_dict, output_images_colmap)
+        if output_images_colmap.ext == ".txt":
+            rm.write_images_text(smoothed_images_dict, output_images_colmap)
+        elif output_images_colmap.ext == ".bin":
+            rm.write_images_bin(smoothed_images_dict, output_images_colmap)
+        else:
+            print(output_images_colmap.ext)
 
     return interpolated_frames
 

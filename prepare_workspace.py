@@ -77,7 +77,7 @@ def prepare_video_workspace(video_name, video_frames_folder,
     output["interpolated_frames_list"] = output["model_folder"] / "interpolated_frames.txt"
     output["final_model"] = output["model_folder"] / "final"
     output["kitti_format_folder"] = converted_output_folder / "KITTI" / relative_path_folder
-    output["viz_folder"] = converted_output_folder / "vizualisation" / relative_path_folder
+    output["viz_folder"] = converted_output_folder / "visualization" / relative_path_folder
     video_env["output_env"] = output
     video_env["already_localized"] = env["resume_work"] and output["model_folder"].isdir()
     video_env["GT_already_done"] = env["resume_work"] and (raw_output_folder / "ground_truth_depth" / video_name.stem).isdir()

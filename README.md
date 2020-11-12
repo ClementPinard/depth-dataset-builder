@@ -173,6 +173,7 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
     * `--multiple_models` : If selected, will let colmap mapper do multiple models. The biggest one will then be chosen
     * `--more_sift_features` : If selected, will activate the COLMAP options ` SiftExtraction.domain_size_pooling` and `--SiftExtraction.estimate_affine_shape` during feature extraction. Be careful, this does not use GPU and is thus very slow. More info : https://colmap.github.io/faq.html#increase-number-of-matches-sparse-3d-points
     * `--add_new_videos` : If selected, will skip the mapping steps to directly register new video with respect to an already existing colmap model.
+    * `--filter_models` : If selected, will filter video localization to smooth trajectory
     * `--stereo_min_depth` : Min depth for PatchMatch Stereo used during point cloud densification
     * `--stereo_max_depth` : Same as min depth but for max depth.
 
@@ -297,7 +298,7 @@ This will essentially do the same thing as the script, in order to let you chang
     colmap feature_extractor \
     --database_path /path/to/scan.db \
     --image_path /path/to/images \
-    --image_list_path /path/toimages/video_frames_for_thorough_scan.txt
+    --image_list_path /path/to/images/video_frames_for_thorough_scan.txt
     --ImageReader.mask_path Path/to/images_mask/ \
     ```
 
@@ -365,7 +366,7 @@ This will essentially do the same thing as the script, in order to let you chang
     colmap model_aligner \
     --input_path /path/to/thorough/0/ \
     --output_path /path/to/geo_registered_model \
-    --ref_images_path /path/toimages/georef.txt
+    --ref_images_path /path/to/images/georef.txt
     --robust_alignment_max_error 5
     ```
 
@@ -388,16 +389,16 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         python generate_sky_masks.py \
-        --img_dir /path/toimages/videos/dir \
+        --img_dir /path/to/images/videos/dir \
         --colmap_img_root /path/to/images \
-        --mask_root /path/to/images_mask \
+        --maskroot /path/to/images_mask \
         --batch_size 8
         ```
 
         ```
         python add_video_to_db.py \
-        --frame_list /path/toimages/videos/dir/lowfps.txt \
-        --metadata /path/toimages/videos/dir/metadata.csv\
+        --frame_list /path/to/images/videos/dir/lowfps.txt \
+        --metadata /path/to/images/videos/dir/metadata.csv\
         --database /path/to/video_scan.db
         ```
 
@@ -405,7 +406,7 @@ This will essentially do the same thing as the script, in order to let you chang
         colmap feature_extractor \
         --database_path /path/to/video_scan.db \
         --image_path /path/to/images \
-        --image_list_path /path/toimages/videos/dir/lowfps.txt
+        --image_list_path /path/to/images/videos/dir/lowfps.txt
         --ImageReader.mask_path Path/to/images_mask/
         ```
 
@@ -448,7 +449,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         For next videos, replace input1 with `/path/to/georef_full` , which will incrementally add more and more images to the model.
 
-    5. Register the remaining frames of the videos, without mapping. This is done by chunks in order to avoid RAM problems. Chunks are created during step 5, when calling script `videos_to_colmap.py`. For each chunk `N`, make a copy of the scan database and do the same operations as above, minus the mapping, replaced with image registration.
+    5. Register the remaining frames of the videos, without mapping. This is done by chunks in order to avoid RAM problems.
+    Chunks are created during step 5, when calling script `videos_to_colmap.py`. For each chunk `N`, make a copy of the scan database and do the same operations as above, minus the mapping, replaced with image registration.
 
         ```
         cp /path/to/video_scan.db /path/to/video_scan_chunk_n.db
@@ -456,8 +458,8 @@ This will essentially do the same thing as the script, in order to let you chang
 
         ```
         python add_video_to_db.py \
-        --frame_list /path/toimages/videos/dir/full_chunk_n.txt \
-        --metadata /path/toimages/videos/dir/metadata.csv\
+        --frame_list /path/to/images/videos/dir/full_chunk_n.txt \
+        --metadata /path/to/images/videos/dir/metadata.csv\
         --database /path/to/video_scan_chunk_n.db
         ```
 
@@ -465,7 +467,7 @@ This will essentially do the same thing as the script, in order to let you chang
         colmap feature_extractor \
         --database_path /path/to/video_scan_chunk_n.db \
         --image_path /path/to/images \
-        --image_list_path /path/toimages/videos/dir/full_n.txt
+        --image_list_path /path/to/images/videos/dir/full_n.txt
         --ImageReader.mask_path Path/to/images_mask/
         ```
 
@@ -510,7 +512,7 @@ This will essentially do the same thing as the script, in order to let you chang
         python extract_video_from_model.py \
         --input_model /path/to/full_video_model \
         --output_model /path/to/final_model \
-        --metadata_path /path/toimages/video/dir/metadata.csv
+        --metadata_path /path/to/images/video/dir/metadata.csv
         --output_format txt
         ```
 
@@ -519,8 +521,8 @@ This will essentially do the same thing as the script, in order to let you chang
         python filter_colmap_model.py \
         --input_images_colmap /path/to/final_model/images.txt \
         --output_images_colmap /path/to/final_model/images.txt \
-        --metadata /path/toimages/video/dir/metadata.csv \
-        --interpolated_frames_list /path/toimages/video/dir/interpolated_frames.txt
+        --metadata /path/to/images/video/dir/metadata.csv \
+        --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt
         ```
     At the end of these per-video-tasks, you should have a model at `/path/to/georef_full` with all photogrammetry images + localization of video frames at 1fps, and for each video a TXT file with positions with respect to the first geo-registered reconstruction.
 
@@ -678,7 +680,22 @@ This will essentially do the same thing as the script, in order to let you chang
     --compress_depth_maps 1
     ```
 
-    This will create for each video a folder `/path/to/raw_GT/groundtruth_depth/<video name>/` with compressed files with depth information. Option `--write_occlusion_depth` will make the folder `/path/to/raw_GT/` much heavier but is optional. It is used for inspection purpose.
+    This will create for each video a folder `/path/to/raw_GT/ground_truth_depth/<video name>/` with files with depth information. Option `--write_occlusion_depth` will make the folder `/path/to/raw_GT/` much heavier but is optional. It is used for inspection purpose. Option `--compress_depth_maps` will try to compress depth maps with GZip algorithm. When not using compressiong, the files will be named `[frame_name.jpg]` (even if it's not a jpeg file), and otherwise it will be named `[frame_name.jpg].gz`. Note that for non sparse depth maps (especially occlusion depth maps), the GZ compression is not very effective.
+
+    Alternatively, you can do a sanity check before creating depth maps by running dataset inspector
+    See https://github.com/ETH3D/dataset-pipeline#dataset-inspection
+     - Note that you don't need the option `--multi_res_point_cloud_directory_path`
+     - Also note that this will load every image of your video, so for long videos it can be very RAM demanding
+
+    ```
+    ETH3D/build/DatasetInspector \
+    --scan_alignment_path /path/to/registered.mlp \
+    --image_base_path /path/to/images \
+    --state_path path/to/final_model \
+    --occlusion_mesh_path /path/to/occlusion_mesh.ply \
+    --occlusion_splats_path /path/to/splats/ply \
+    --max_occlusion_depth 200
+    ```
 
 15. Dataset conversion
 
@@ -686,13 +703,13 @@ This will essentially do the same thing as the script, in order to let you chang
 
     ```
     python convert_dataset.py \
-    --depth_dir /path/to/raw_GT/groundtruth_depth/<video name>/ \
-    --images_root_folder /path/toimages/ \
+    --depth_dir /path/to/raw_GT/ground_truth_depth/<video name>/ \
+    --images_root_folder /path/to/images/ \
     --occ_dir /path/to/raw_GT/occlusion_depth/<video name>/ \
-    --metadata_path /path/toimages/videos/dir/metadata.csv \
+    --metadata_path /path/to/images/videos/dir/metadata.csv \
     --dataset_output_dir /path/to/dataset/ \
-    --video_output_dir /path/to/vizualisation/ \
-    --interpolated_frames_list /path/toimages/video/dir/interpolated_frames.txt \
+    --video_output_dir /path/to/visualization/ \
+    --interpolated_frames_list /path/to/images/video/dir/interpolated_frames.txt \
     --final_model /path/to/final_model/ \
     --video \
     --downscale 4 \

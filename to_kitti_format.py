@@ -9,7 +9,7 @@ import gzip
 from pebble import ProcessPool
 from tqdm import tqdm
 
-parser = ArgumentParser(description='create a vizualisation from ground truth created',
+parser = ArgumentParser(description='create a visualization from ground truth created',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--img_dir', metavar='DIR', type=Path)

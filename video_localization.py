@@ -59,7 +59,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
                    chunk_image_list_paths, chunk_dbs,
                    colmap_models_root, full_model, lowfps_model, chunk_models, final_model,
                    output_env, eth3d, colmap, ffmpeg, pcl_util,
-                   step_index=None, video_index=None, num_videos=None, already_localized=False, filter_model=True,
+                   step_index=None, video_index=None, num_videos=None, already_localized=False,
                    save_space=False, triangulate=False, **env):
 
     def print_step_pv(step_number, step_name):
@@ -173,23 +173,13 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
                                          output_matrix=matrix_name, output_cloud=env["lidar_ply"],
                                          max_distance=10)
 
-    if filter_model:
-        i_pv += 1
-        print_step_pv(i_pv, "Filtering model to have continuous localization")
-        (final_model / "images.txt").rename(final_model / "images_raw.txt")
-        interpolated_frames = filter_colmap_model(input_images_colmap=final_model / "images_raw.txt",
-                                                  output_images_colmap=final_model / "images.txt",
-                                                  metadata_path=metadata, **env)
+    (final_model / "images.txt").rename(final_model / "images_raw.txt")
 
     output_env["video_frames_folder"].makedirs_p()
     video_frames_folder.merge_tree(output_env["video_frames_folder"])
 
     output_env["model_folder"].makedirs_p()
     colmap_models_root.merge_tree(output_env["model_folder"])
-
-    if filter_model:
-        with open(output_env["interpolated_frames_list"], "w") as f:
-            f.write("\n".join(interpolated_frames) + "\n")
 
     clean_workspace()
 
@@ -198,14 +188,42 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                 viz_folder, kitti_format_folder, metadata, interpolated_frames_list,
                 final_model, aligned_mlp, global_registration_matrix,
                 occlusion_ply, splats_ply,
-                eth3d, colmap,
-                video_index=None, num_videos=None, GT_already_done=False,
+                eth3d, colmap, filter_models=True,
+                step_index=None, video_index=None, num_videos=None, GT_already_done=False,
                 save_space=False, inspect_dataset=False, **env):
+
+    def print_step_pv(step_number, step_name):
+        if step_index is not None and video_index is not None and num_videos is not None:
+            progress = "{}/{}".format(video_index, num_videos)
+            substep = "{}.{}".format(step_index, video_index)
+        else:
+            progress = ""
+            substep = ""
+        print_step("{}.{}".format(substep, step_number),
+                   "[Video {}, {}] \n {}".format(video_name.basename(),
+                                                 progress,
+                                                 step_name))
+
     if GT_already_done:
         return
     if not final_model.isdir():
         print("Video not localized, rerun the script without skipping former step")
         return
+
+    print("Creating GT on video {} [{}/{}]".format(video_name.basename(), video_index, num_videos))
+    i_pv = 1
+    if filter_models:
+        print_step_pv(i_pv, "Filtering model to have continuous localization")
+        interpolated_frames = filter_colmap_model(input_images_colmap=final_model / "images_raw.txt",
+                                                  output_images_colmap=final_model / "images.txt",
+                                                  metadata_path=metadata, **env)
+        with open(interpolated_frames_list, "w") as f:
+            f.write("\n".join(interpolated_frames) + "\n")
+        i_pv += 1
+    else:
+        (final_model / "images_raw.txt").copy(final_model / "images.txt")
+        interpolated_frames = []
+
     model_length = len(read_images_text(final_model / "images.txt"))
     if model_length < 2:
         return
@@ -243,9 +261,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         eth3d.inspect_dataset(final_mlp, final_model,
                               final_occlusions, final_splats)
 
-    print("Creating GT on video {} [{}/{}]".format(video_name.basename(), video_index, num_videos))
-    i_pv = 1
-    print_step(i_pv, "Creating Ground truth data with ETH3D")
+    print_step_pv(i_pv, "Creating Ground truth data with ETH3D")
 
     eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
                               final_occlusions, final_splats)
@@ -253,15 +269,15 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     kitti_format_folder.makedirs_p()
 
     i_pv += 1
-    print_step(i_pv, "Convert to KITTI format and create video with GT vizualisation")
+    print_step_pv(i_pv, "Convert to KITTI format and create video with GT visualization")
 
     cd.convert_dataset(final_model,
                        raw_output_folder / "ground_truth_depth" / video_name.stem,
                        images_root_folder,
                        raw_output_folder / "occlusion_depth" / video_name.stem,
                        kitti_format_folder, viz_folder,
-                       metadata, interpolated_frames_list,
-                       vizualisation=True, video=True, downscale=4, threads=8, **env)
+                       metadata, interpolated_frames,
+                       visualization=True, video=True, downscale=4, threads=8, **env)
     interpolated_frames_list.copy(kitti_format_folder)
     if save_space:
         (raw_output_folder / "occlusion_depth" / video_name.stem).rmtree_p()

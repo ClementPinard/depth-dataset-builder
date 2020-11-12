@@ -139,7 +139,7 @@ def main():
         colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",
                             input=env["georef_recon"])
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
-        mxw.create_project(georef_mlp, [env["georefrecon_ply"]])
+        mxw.create_project(georef_mlp, [env["georef_recon"] / "georef_sparse.ply"])
         colmap.export_model(output=env["georef_recon"],
                             input=env["georef_recon"],
                             output_type="TXT")
@@ -173,10 +173,17 @@ def main():
             '''Note : We use the inverse matrix here, because in general, it's easier to register the reconstructed model into the lidar one,
             as the reconstructed will have less points, but in the end we need the matrix to apply to the lidar point to be aligned
             with the camera positions (ie the inverse)'''
-            return np.linalg.inv(np.fromfile(env["matrix_path"], sep=" ").reshape(4, 4))
+            return np.linalg.inv(np.fromfile(path, sep=" ").reshape(4, 4))
         else:
-            print("Error, no registration matrix can be found, identity will be used")
-            return np.eye(4)
+            print("Error, no registration matrix can be found")
+            print("Ensure that your registration matrix was saved under the name {}".format(path))
+            decision = None
+            while decision not in ["y", "n", ""]:
+                decision = input("retry ? [Y/n]")
+            if decision.lower() in ["y", ""]:
+                return get_matrix(path)
+            elif decision.lower() == "n":
+                return np.eye(4)
     i += 1
     if i not in args.skip_step:
         print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud")
@@ -241,11 +248,21 @@ def main():
     if args.inspect_dataset:
         # First inspection : Check registration of the Lidar pointcloud wrt to COLMAP model but without the occlusion mesh
         # Second inspection : Check the occlusion mesh and the splats
-        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
-                              colmap_model=env["georef_recon"],
+        colmap.export_model(output=env["georef_full_recon"] / "georef_sparse.ply",
+                            input=env["georef_full_recon"])
+        georef_mlp = env["georef_recon"]/"georef_recon.mlp"
+        mxw.create_project(georef_mlp, [env["georefrecon_ply"]])
+        colmap.export_model(output=env["georef_full_recon"],
+                            input=env["georef_full_recon"],
+                            output_type="TXT")
+        eth3d.inspect_dataset(scan_meshlab=georef_mlp,
+                              colmap_model=env["georef_full_recon"],
                               image_path=env["image_path"])
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
-                              colmap_model=env["georef_recon"],
+                              colmap_model=env["georef_full_recon"],
+                              image_path=env["image_path"])
+        eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
+                              colmap_model=env["georef_full_recon"],
                               image_path=env["image_path"],
                               occlusions=env["occlusion_ply"],
                               splats=env["splats_ply"])
@@ -258,6 +275,7 @@ def main():
 
             generate_GT(video_name=v, GT_already_done=video_env["GT_already_done"],
                         video_index=j+1,
+                        step_index=i,
                         num_videos=len(env["videos_to_localize"]),
                         metadata=video_env["metadata"],
                         **video_env["output_env"], **env)

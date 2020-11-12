@@ -50,6 +50,18 @@ def get_mesh(input_mlp, index):
     return transform, filepath
 
 
+def get_meshes(input_mlp):
+    with open(input_mlp, "r") as f:
+        to_read = etree.parse(f)
+    meshgroup = to_read.getroot()[0]
+    meshes = []
+    for mesh in meshgroup:
+        transform = np.fromstring(mesh[0].text, sep=" ").reshape(4, 4)
+        filepath = mesh.get("label")
+        meshes.append(transform, filepath)
+    return meshes
+
+
 def add_meshes_to_project(input_mlp, output_mlp, model_paths, labels=None, transforms=None, start_index=-1):
     if labels is not None:
         assert(len(model_paths) == len(labels))

@@ -63,7 +63,7 @@ int main (int argc, char** argv)
   }
   LOG(INFO) << "point clouds loaded";
 
-  LOG(INFO) << "Subsampling to have a mean distance between points of " << resolution << " m";
+  LOG(INFO) << "Subsampling Lidar point cloud to have a mean distance between points of " << resolution << " m";
   lidar = filter<pcl::PointNormal>(lidar, resolution);
 
   LOG(INFO) << "Loading georef_dense vis file...";

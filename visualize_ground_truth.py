@@ -1,7 +1,7 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
 
-parser = ArgumentParser(description='Create vizualisation for specified video',
+parser = ArgumentParser(description='Create visualization for specified video',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--gt', metavar='PATH',

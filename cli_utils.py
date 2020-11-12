@@ -63,6 +63,9 @@ def set_argparser():
                            'This is for RAM purpose, as loading feature matches of thousands of frames can take up GBs of RAM')
     ve_parser.add_argument('--include_lowfps_thorough', action='store_true',
                            help="if selected, will include videos frames at lowfps for thorough scan (longer)")
+    ve_parser.add_argument('--generic_model', default='OPENCV',
+                           help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
+                           'See https://colmap.github.io/cameras.html')
 
     exec_parser = parser.add_argument_group("Executable files")
     exec_parser.add_argument('--log', default=None, type=Path)
@@ -81,18 +84,37 @@ def set_argparser():
     pm_parser.add_argument('--triangulate', action="store_true")
     pm_parser.add_argument('--multiple_models', action='store_true', help='If selected, will let colmap mapper do multiple models.'
                                                                           'The biggest one will then be chosen')
-    pm_parser.add_argument('--more_sift_features', action="store_true")
+    pm_parser.add_argument('--more_sift_features', action="store_true",
+                           help="If selected, will activate the COLMAP options ` SiftExtraction.domain_size_pooling` "
+                                " and `--SiftExtraction.estimate_affine_shape` during feature extraction. Be careful, "
+                                "this does not use GPU and is thus very slow. More info : "
+                                "https://colmap.github.io/faq.html#increase-number-of-matches-sparse-3d-points")
+    pm_parser.add_argument('--filter_models', action="store_true",
+                           help="If selected, will filter video localization to smooth trajectory")
     pm_parser.add_argument('--stereo_min_depth', type=float, default=0.1, help="Min depth for PatchMatch Stereo")
     pm_parser.add_argument('--stereo_max_depth', type=float, default=100, help="Max depth for PatchMatch Stereo")
 
     om_parser = parser.add_argument_group("Occlusion Mesh")
-    om_parser.add_argument('--normals_method', default="radius", choices=["radius", "neighbours"])
-    om_parser.add_argument('--normals_radius', default=0.2, type=float)
-    om_parser.add_argument('--normals_neighbours', default=8, type=int)
-    om_parser.add_argument('--mesh_resolution', default=0.2, type=float)
-    om_parser.add_argument('--splats', action='store_true')
-    om_parser.add_argument('--splat_threshold', default=0.1, type=float)
-    om_parser.add_argument('--max_occlusion_depth', default=250, type=float)
+    om_parser.add_argument('--normals_method', default="radius", choices=["radius", "neighbours"],
+                           help='Method used for normal computation between radius and nearest neighbours')
+    om_parser.add_argument('--normals_radius', default=0.2, type=float,
+                           help='If radius method for normals, radius within which other points will be considered neighbours')
+    om_parser.add_argument('--normals_neighbours', default=8, type=int,
+                           help='If nearest neighbours method chosen, number of neighbours to consider.'
+                                'Could be very close or very far points, but has a constant complexity')
+    om_parser.add_argument('--mesh_resolution', default=0.2, type=float,
+                           help='Mesh resolution for occlusion in meters. Higher means more coarse. (in meters)')
+    om_parser.add_argument('--splats', action='store_true',
+                           help='If selected, will create splats for points in the cloud that are far from the occlusion mesh')
+    om_parser.add_argument('--splat_threshold', default=0.1, type=float,
+                           help='Distance from occlusion mesh at which a splat will be created for a particular point (in meters)')
+    om_parser.add_argument('--max_splat_size', default=None, type=float,
+                           help='Splat size is defined by mean istance from its neighbours. You can define a max splat size for '
+                                'isolated points which otherwise would make a very large useless splat. '
+                                'If not set, will be `2.5*splat_threshold`.')
+    gt_parser = parser.add_argument_group("Ground Truth Creator")
+    gt_parser.add_argument('--max_occlusion_depth', default=250, type=float,
+                           help='max depth for occlusion. Everything further will not be considered at infinity')
     return parser
 
 
@@ -120,8 +142,7 @@ per_vid_steps_1 = ["Full video extraction",
                    "Localizing remaining frames",
                    "Re-Alignment of triangulated points with Lidar point cloud"]
 per_vid_steps_2 = ["Creating Ground truth data",
-                   "Create video with GT vizualisation",
-                   "Convert to KITTI format"]
+                   "Create video with GT visualization and Convert to KITTI format"]
 
 
 def print_workflow():

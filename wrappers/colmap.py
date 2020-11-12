@@ -95,7 +95,8 @@ class Colmap(Wrapper):
     def undistort(self, input, max_image_size=1000):
         options = ["image_undistorter", "--image_path", self.image_path,
                    "--input_path", input, "--output_path", self.dense_workspace,
-                   "--output_type", "COLMAP", "--max_image_size", str(max_image_size)]
+                   "--output_type", "COLMAP", "--max_image_size", str(max_image_size),
+                   "--min_scale", "1"]
         self.__call__(options)
 
     def dense_stereo(self, max_depth=None, min_depth=None):

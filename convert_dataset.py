@@ -16,7 +16,7 @@ import pandas as pd
 
 def save_intrinsics(cameras, images, output_dir, downscale=1):
     def construct_intrinsics(cam):
-        assert('PINHOLE' in cam.model)
+        # assert('PINHOLE' in cam.model)
         if 'SIMPLE' in cam.model:
             fx, cx, cy, *_ = cam.params
             fy = fx
@@ -105,7 +105,7 @@ def apply_cmap_and_resize(depth, colormap, downscale):
 
 def process_one_frame(img_path, depth_path, occ_path,
                       dataset_output_dir, video_output_dir, downscale, interpolated,
-                      visualization=False, viz_width=1920):
+                      visualization=False, viz_width=1920, compressed=True):
     img = imread(img_path)
     if len(img.shape) == 3:
         h, w, _ = img.shape
@@ -123,7 +123,7 @@ def process_one_frame(img_path, depth_path, occ_path,
         # Img goes to upper left corner of visualization
         output_img[:viz_height//2, :viz_width//2] = viz_img
     if depth_path is not None:
-        with gzip.open(depth_path, "rb") as f:
+        with gzip.open(depth_path, "rb") if compressed else open(depth_path, "rb") as f:
             depth = np.frombuffer(f.read(), np.float32).reshape(h, w)
         output_depth_name = dataset_output_dir / img_path.basename() + '.npy'
         downscaled_depth, viz = apply_cmap_and_resize(depth, 'rainbow', downscale)
@@ -139,7 +139,7 @@ def process_one_frame(img_path, depth_path, occ_path,
                 output_img[:viz_height//2, viz_width//2:]//2
 
     if occ_path is not None and visualization:
-        with gzip.open(occ_path, "rb") as f:
+        with gzip.open(occ_path, "rb") if compressed else open(occ_path, "rb") as f:
             occ = np.frombuffer(f.read(), np.float32).reshape(h, w)
         _, occ_viz = apply_cmap_and_resize(occ, 'bone', downscale)
         occ_viz_rescaled = resize(occ_viz, (viz_height//2, viz_width//2))
@@ -173,11 +173,15 @@ parser.add_argument('--video', action='store_true',
                     help='If selected, will generate a video from visualization images')
 parser.add_argument('--downscale', type=int, default=1, help='How much ground truth depth is downscaled in order to save space')
 parser.add_argument('--threads', '-j', type=int, default=8, help='')
+parser.add_argument('--compressed', action='store_true',
+                    help='Indicates if GroundTruthCreator was used with option `--compress_depth_maps`')
+parser.add_argument('--verbose', '-v', action='count', default=0)
 
 
 def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
-                    dataset_output_dir, video_output_dir, metadata_path, interpolated_frames_path,
-                    ffmpeg, threads=8, downscale=None, width=None, visualization=False, video=False, **env):
+                    dataset_output_dir, video_output_dir, metadata_path, interpolated_frames,
+                    ffmpeg, threads=8, downscale=None, compressed=True,
+                    width=None, visualization=False, video=False, verbose=0, **env):
     dataset_output_dir.makedirs_p()
     video_output_dir.makedirs_p()
     if video:
@@ -194,11 +198,6 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
 
     save_intrinsics(cameras, images, dataset_output_dir, downscale)
     save_positions(images, dataset_output_dir)
-    if interpolated_frames_path is None:
-        interpolated_frames = []
-    else:
-        with open(interpolated_frames_path, "r") as f:
-            interpolated_frames = [line[:-1] for line in f.readlines()]
 
     image_df = pd.DataFrame.from_dict(images, orient="index").set_index("id")
     image_df = image_df.reindex(metadata.index)
@@ -207,29 +206,39 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     interpolated = []
     imgs = []
     cameras = []
+    not_registered = 0
 
     for i in metadata["image_path"]:
         img_path = images_root_folder / i
         imgs.append(img_path)
 
         fname = img_path.basename()
-        depth_path = depth_dir / fname + ".gz"
+        depth_path = depth_dir / fname
+        occ_path = occ_dir / fname
+        if compressed:
+            depth_path += ".gz"
+            occ_path += ".gz"
         if depth_path.isfile():
+            if occ_path.isfile():
+                occ_maps.append(occ_path)
+            else:
+                occ_maps.append(None)
             depth_maps.append(depth_path)
+            if i in interpolated_frames:
+                if verbose > 2:
+                    print("Image {} was interpolated".format(fname))
+                interpolated.append(True)
+            else:
+                interpolated.append(False)
         else:
-            print("Image {} was not registered".format(fname))
+            if verbose > 2:
+                print("Image {} was not registered".format(fname))
+            not_registered += 1
             depth_maps.append(None)
-        if i in interpolated_frames:
-            interpolated.append(True)
-            print("Image {} was interpolated".format(fname))
-        else:
-            interpolated.append(False)
-
-        occ_path = occ_dir / fname + ".gz"
-        if occ_path.isfile():
-            occ_maps.append(occ_path)
-        else:
             occ_maps.append(None)
+            interpolated.append(False)
+    print('{}/{} Frames not registered ({:.2f}%)'.format(not_registered, len(metadata), 100*not_registered/len(metadata)))
+    print('{}/{} Frames interpolated ({:.2f}%)'.format(sum(interpolated), len(metadata), 100*sum(interpolated)/len(metadata)))
     if threads == 1:
         for i, d, o, n in tqdm(zip(imgs, depth_maps, occ_maps, interpolated), total=len(imgs)):
             process_one_frame(i, d, o, dataset_output_dir, video_output_dir, downscale, n, visualization, viz_width=1920)
@@ -256,5 +265,10 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
+    if args.interpolated_frames_path is None:
+        env["interpolated_frames"] = []
+    else:
+        with open(args.interpolated_frames_path, "r") as f:
+            env["interpolated_frames"] = [line[:-1] for line in f.readlines()]
     env["ffmpeg"] = FFMpeg()
     convert_dataset(**env)

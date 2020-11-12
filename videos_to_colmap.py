@@ -13,7 +13,7 @@ from tqdm import tqdm
 import tempfile
 
 parser = ArgumentParser(description='Take all the drone videos of a folder and put the frame '
-                                    'location in a COLMAP file for vizualisation',
+                                    'location in a COLMAP file for visualization',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--video_folder', metavar='DIR',
@@ -24,7 +24,7 @@ parser.add_argument('--centroid_path', default=None, help="path to centroid gene
 parser.add_argument('--colmap_img_root', metavar='DIR', type=Path,
                     help="folder that will be used as \"image_path\" parameter when using COLMAP", required=True)
 parser.add_argument('--output_format', metavar='EXT', default="bin", choices=["bin", "txt"],
-                    help='format of the COLMAP file that will be outputed, used for vizualisation only')
+                    help='format of the COLMAP file that will be outputed, used for visualization only')
 parser.add_argument('--vid_ext', nargs='+', default=[".mp4", ".MP4"],
                     help="format of video files that will be scraped from input folder")
 parser.add_argument('--pic_ext', nargs='+', default=[".jpg", ".JPG", ".png", ".PNG"],
@@ -40,8 +40,12 @@ parser.add_argument('--orientation_weight', default=1, type=float,
                     help="Weight applied to orientation during optimal sample. "
                     "Higher means two pictures with same location but different orientation will be considered farer apart")
 parser.add_argument('--resolution_weight', default=1, type=float, help="same as orientation, but with image size")
-parser.add_argument('--save_space', action="store_true", help="if selected, will only extract from ffmpeg frames used for thorough photogrammetry")
+parser.add_argument('--save_space', action="store_true",
+                    help="if selected, will only extract from ffmpeg frames used for thorough photogrammetry")
 parser.add_argument('--thorough_db', type=Path, help="output db file which will be used by COLMAP for photogrammetry")
+parser.add_argument('--generic_model', default='OPENCV',
+                    help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
+                    'See https://colmap.github.io/cameras.html')
 parser.add_argument('-v', '--verbose', action="count", default=0)
 
 
@@ -152,7 +156,7 @@ def register_new_cameras(cameras_dataframe, database, camera_dict):
 
 def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, system, centroid,
                          thorough_db, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
-                         output_colmap_format="bin", save_space=False, include_lowfps_thorough=False,
+                         output_colmap_format="bin", generic_model='OPENCV', save_space=False, include_lowfps_thorough=False,
                          max_sequence_length=1000, num_neighbours=10, existing_georef=False, **env):
     proj = Proj(system)
     final_metadata = []
@@ -212,7 +216,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
             metadata['indoor'] = True
             metadata['location_valid'] = False
             metadata["model"] = "generic"
-            metadata["camera_model"] = "PINHOLE"
+            metadata["camera_model"] = generic_model
             metadata["picture_hfov"] = 0
             metadata["picture_vfov"] = 0
             metadata["frame_quat_w"] = np.NaN
