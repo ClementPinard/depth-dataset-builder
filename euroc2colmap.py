@@ -3,7 +3,7 @@ import numpy as np
 from path import Path
 import yaml
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from colmap.read_model import Image, Camera, Point3D, write_model, qvec2rotmat, rotmat2qvec
+from colmap_util.read_model import Image, Camera, Point3D, write_model, qvec2rotmat, rotmat2qvec
 from tqdm import tqdm
 from pyntcloud import PyntCloud
 from itertools import islice

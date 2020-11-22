@@ -103,7 +103,7 @@ int main (int argc, char** argv)
       std::vector<int> image_idx = input_vis_points.at(nn_indices[0]);
       output_vis_points.push_back(image_idx);
     }else{
-      output_vis_points.push_back(std::vector<int>)
+      output_vis_points.push_back(std::vector<int>());
     }
   }
 

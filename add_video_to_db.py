@@ -31,7 +31,7 @@ def add_to_db(db_path, metadata_path, frame_list_path, **env):
     for _, row in tqdm(metadata.iterrows(), total=len(metadata)):
         image_path = row["image_path"]
         camera_id = row["camera_id"]
-        if row["location_valid"]:
+        if "location_valid" in row.keys() and row["location_valid"]:
             frame_gps = row[["location_longitude", "location_latitude", "location_altitude"]]
         else:
             frame_gps = np.full(3, np.NaN)

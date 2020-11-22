@@ -33,7 +33,7 @@ def main():
     pdraw = PDraw(args.nw, verbose=args.verbose, logfile=args.log)
     env["pdraw"] = pdraw
     eth3d = ETH3D(args.eth3d, args.raw_output_folder / "Images", args.max_occlusion_depth,
-                  verbose=args.verbose, logfile=args.log)
+                  verbose=args.verbose, logfile=args.log, splat_radius=args.eth3d_splat_radius)
     env["eth3d"] = eth3d
     pcl_util = PCLUtil(args.pcl_util, verbose=args.verbose, logfile=args.log)
     env["pcl_util"] = pcl_util

@@ -53,10 +53,10 @@ class FFMpeg(Wrapper):
                 frac_to_float(json_cam[0]["r_frame_rate"]),
                 int(json_cam[0]["nb_frames"]))
 
-    def create_video(self, video_path, glob_pattern, fps=30):
-        ffmpeg_options = ["-y", "-r", str(fps),
-                          "-pattern_type", "glob", "-i",
-                          glob_pattern, video_path]
+    def create_video(self, video_path, input_string, glob=True, fps=30):
+        ffmpeg_options = ["-y", "-r", "{:.2f}".format(fps)] + \
+                         (["-pattern_type", "glob"] if glob else []) + \
+                         ["-i", input_string, video_path]
         self.__call__(ffmpeg_options)
 
 

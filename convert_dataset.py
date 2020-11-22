@@ -189,7 +189,6 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     cameras, images, _ = rm.read_model(final_model, '.txt')
     metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
     framerate = metadata["framerate"].values[0]
-
     if downscale is None:
         assert(width is not None)
 
@@ -258,7 +257,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     if video:
         video_path = str(video_output_dir.parent/'{}_groundtruth_viz.mp4'.format(video_output_dir.stem))
         glob_pattern = str(video_output_dir/'*.png')
-        ffmpeg.create_video(video_path, glob_pattern, framerate)
+        ffmpeg.create_video(video_path, glob_pattern, True, framerate)
         video_output_dir.rmtree_p()
 
 

@@ -186,6 +186,9 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
     * `--splat_threshold` : Distance from occlusion mesh at which a splat will be created for a particular point (default, 10cm)
     * `--max_splate_size` : Splat size is defined by mean istance from its neighbours. You can define a max splat size for isolated points which otherwise would make a very large useless splat. If not set, will be `2.5*splat_threshold`.
 
+7. Ground truth creation
+    * `--eth3d_splat_radius` : Splat radius for occlusion mesh boundaries, radius of area (in meters) which will be defined as invalid because of occlusion uncertainty, see `splat_radius` option for ETH3D. Thumb rule here is that it should be around your point cloud precision. (default 0.01, i.e. 1cm)
+
 ### Manual step by step
 
 This will essentially do the same thing as the script, in order to let you change some steps at will.

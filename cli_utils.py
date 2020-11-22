@@ -115,6 +115,8 @@ def set_argparser():
     gt_parser = parser.add_argument_group("Ground Truth Creator")
     gt_parser.add_argument('--max_occlusion_depth', default=250, type=float,
                            help='max depth for occlusion. Everything further will not be considered at infinity')
+    gt_parser.add_argument('--eth3d_splat_radius', default=0.01, type=float,
+                           help='see splat radius for ETH3D')
     return parser
 
 

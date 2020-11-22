@@ -35,6 +35,8 @@ def erosion(width, mask):
 @torch.no_grad()
 def extract_sky_mask(network, image_paths, mask_folder):
     images = np.stack([imageio.imread(i) for i in image_paths])
+    if len(images.shape) == 3:
+        images = np.stack(3 * [images], axis=-1)
     b, h, w, _ = images.shape
     image_tensor = torch.from_numpy(images).float()/255
     image_tensor = image_tensor.permute(0, 3, 1, 2)  # shape [B, C, H, W]
