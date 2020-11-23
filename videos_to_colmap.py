@@ -46,6 +46,8 @@ parser.add_argument('--thorough_db', type=Path, help="output db file which will 
 parser.add_argument('--generic_model', default='OPENCV',
                     help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
                     'See https://colmap.github.io/cameras.html')
+parser.add_argument('--include_lowfps_thorough', action='store_true',
+                    help="if selected, will include videos frames at lowfps for thorough scan, even for generic or indoor videos")
 parser.add_argument('-v', '--verbose', action="count", default=0)
 
 

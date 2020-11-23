@@ -283,6 +283,19 @@ This will essentially do the same thing as the script, in order to let you chang
 
     And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames). Each chunk will have the list of frames stored in a file `full_chunk_N.txt` inside the Video folder.
 
+    **Note** : This script is initially intended to be used for Anafi video, with metadata directly embedded in the video feed. However, if you have other videos with the same kind of metadata (GPS, timestamp, orientation ...), you kind manually put them in a csv file that will be named `[video_name]_metadata.csv` alongside the video file `[vide_name].mp4`. One row per frame, obligatory fields are : 
+     - `camera_model` : See https://colmap.github.io/cameras.html
+     - `camera_params` : COLMAP format : tuples beginning with focal length(s) and then distortion params
+     - `x`, `y`, `z` : Frames positions : if not known, put nan
+     - `frame_quat_w`, `frame_quat_x`, `frame_quat_y`, `frame_quat_z` : Frame orientations : if not known, put nan
+     - `location_valid` : Whether `x,y,z` position should be trusted as absolute with respect to the point cloud or not. If `x,y,z` positions are known but only reltive to each other, we can still leverage that data for COLMAP optimal sample, and later model rescaling after thorough photogrammetry.
+     - `time` : timestamp, in microseconds.
+
+    An exemple of this metadata csv generaton can be found with `convert_euroc.py` , which will convert EuRoC dataset to videos with readable metadata.
+
+    Finally, if no metadata is available for your video, because e.g. it is a handheld video, the script will consider your video as generic : it won't be used for thorough photogrammetry (unless the `--include_lowfps` option is chosen), but it will try to localize it and find the cameras intrinsics. Be warned that it is not compatible with variable zoom.
+
+
 
 6. Second part of first COLMAP step : feature extraction for video frames used for thorough photogrammetry
 
