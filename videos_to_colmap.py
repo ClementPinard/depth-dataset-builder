@@ -258,6 +258,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                 videos_summary[device]["indoor"] += 1
             else:
                 videos_summary[device]["outdoor"] += 1
+            if sum(metadata["location_valid"]) > 0:
                 if centroid is None:
                     '''No centroid (possibly because there was no georeferenced lidar pointcloud in the first place)
                     set it as the first valid GPS position of the first outdoor video'''
