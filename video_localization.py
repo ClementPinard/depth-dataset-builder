@@ -6,7 +6,7 @@ from colmap_util.read_model import read_images_text, read_images_binary
 from filter_colmap_model import filter_colmap_model
 import pandas as pd
 import add_video_to_db as avtd
-import extract_video_from_model as evfm
+import extract_pictures_from_model as epfm
 import convert_dataset as cd
 import generate_sky_masks as gsm
 import meshlab_xml_writer as mxw
@@ -55,7 +55,7 @@ def error_empty():
     #     continue
 
 
-def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfps_image_list_path, lowfps_db,
+def localize_video(video_name, video_frames_folder, thorough_db, metadata_path, lowfps_image_list_path, lowfps_db,
                    chunk_image_list_paths, chunk_dbs,
                    colmap_models_root, full_model, lowfps_model, chunk_models, final_model,
                    output_env, eth3d, colmap, ffmpeg, pcl_util,
@@ -80,11 +80,11 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
                 files_to_keep = [Path(path.split("\n")[0]) for path in f.readlines()]
             with open(lowfps_image_list_path, "r") as f:
                 files_to_keep += [Path(path.split("\n")[0]) for path in f.readlines()]
-            files_to_keep += [file.relpath(env["image_path"]) for file in [metadata,
-                                                                           lowfps_image_list_path,
-                                                                           *chunk_image_list_paths]]
+            files_to_keep += [file.relpath(env["colmap_img_root"]) for file in [metadata_path,
+                                                                                lowfps_image_list_path,
+                                                                                *chunk_image_list_paths]]
             for file in sorted(video_frames_folder.files()):
-                if file.relpath(env["image_path"]) not in files_to_keep:
+                if file.relpath(env["colmap_img_root"]) not in files_to_keep:
                     file.remove()
             colmap_models_root.rmtree_p()
 
@@ -97,6 +97,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
 
     thorough_db.copy(lowfps_db)
     colmap.db = lowfps_db
+    metadata = pd.read_csv(metadata_path)
 
     print_step_pv(i_pv, "Full video extraction")
     if save_space:
@@ -151,10 +152,10 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
         for chunk in chunk_models[1:]:
             colmap.merge_models(output=full_model, input1=full_model, input2=chunk)
     final_model.makedirs_p()
-    empty = not evfm.extract_video(input=full_model,
-                                   output=final_model,
-                                   video_metadata_path=metadata,
-                                   output_format=".bin" if triangulate else ".txt")
+    empty = not epfm.extract_pictures(input=full_model,
+                                      output=final_model,
+                                      picture_list=metadata["image_path"].values,
+                                      output_format=".bin" if triangulate else ".txt")
 
     if empty:
         error_empty()
@@ -185,7 +186,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata, lowfp
 
 
 def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_folder,
-                viz_folder, kitti_format_folder, metadata, interpolated_frames_list,
+                viz_folder, kitti_format_folder, metadata_path, interpolated_frames_list,
                 final_model, aligned_mlp, global_registration_matrix,
                 occlusion_ply, splats_ply,
                 eth3d, colmap, filter_models=True,
@@ -212,11 +213,12 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
 
     print("Creating GT on video {} [{}/{}]".format(video_name.basename(), video_index, num_videos))
     i_pv = 1
+    metadata = pd.read_csv(metadata_path)
     if filter_models:
         print_step_pv(i_pv, "Filtering model to have continuous localization")
         interpolated_frames = filter_colmap_model(input_images_colmap=final_model / "images_raw.txt",
                                                   output_images_colmap=final_model / "images.txt",
-                                                  metadata_path=metadata, **env)
+                                                  metadata=metadata, **env)
         with open(interpolated_frames_list, "w") as f:
             f.write("\n".join(interpolated_frames) + "\n")
         i_pv += 1
@@ -255,12 +257,20 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         #  - inspection with lidar cloud without occlusion
         #  - inspection with lidar cloud and occlusion models
         # Careful, very RAM demanding for long sequences !
+        print("THIRD DATASET INSPECTION")
+        print("Inspection of localized video frames "
+              "w.r.t Dense reconstruction")
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
         eth3d.inspect_dataset(georef_mlp, final_model)
+        print("Inspection of localized video frames "
+              "w.r.t Aligned Lidar Point Cloud")
         eth3d.inspect_dataset(final_mlp, final_model)
+        print("Inspection of localized video frames "
+              "w.r.t Aligned Lidar Point Cloud and Occlusion Meshes")
         eth3d.inspect_dataset(final_mlp, final_model,
                               final_occlusions, final_splats)
 
+    i_pv += 1
     print_step_pv(i_pv, "Creating Ground truth data with ETH3D")
 
     eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
@@ -284,3 +294,56 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         (raw_output_folder / "occlusion_depth" / video_name.stem).rmtree_p()
 
     return
+
+
+def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_output_folder,
+                                    converted_output_folder, input_colmap_model,
+                                    aligned_mlp, relpath,
+                                    occlusion_ply, splats_ply,
+                                    eth3d, colmap, step_index=None,
+                                    save_space=False, **env):
+    def print_step_pv(step_number, step_name):
+        if step_index is not None:
+            print_step("{}.{}".format(step_index, step_number), step_name)
+        else:
+            print_step(step_index, step_name)
+
+    i_pv = 1
+    print_step_pv(i_pv, "Copy individual images to output dataset {}".format(raw_output_folder))
+    for p in individual_pictures:
+        output_path = raw_output_folder / "images" / p
+        output_path.parent.makedirs_p()
+        (colmap_img_root / p).copy(output_path)
+
+    i_pv += 1
+    print_step_pv(i_pv, "Extract individual images to dedicated COLMAP model")
+    pictures_colmap_model = raw_output_folder / "models" / "individual_pictures"
+    pictures_colmap_model.makedirs_p()
+    epfm.extract_pictures(input=input_colmap_model,
+                          output=pictures_colmap_model,
+                          picture_list=individual_pictures,
+                          output_format=".txt")
+
+    i_pv += 1
+    print_step_pv(i_pv, "Creating Ground truth data with ETH3D")
+    eth3d.create_ground_truth(aligned_mlp,
+                              pictures_colmap_model,
+                              raw_output_folder,
+                              occlusion_ply,
+                              splats_ply)
+    viz_folder = converted_output_folder / "visualization" / relpath
+    viz_folder.makedirs_p()
+    kitti_format_folder = converted_output_folder / "KITTI" / relpath
+    kitti_format_folder.makedirs_p()
+
+    i_pv += 1
+    print_step_pv(i_pv, "Convert to KITTI format and create pictures with GT visualization")
+    cd.convert_dataset(pictures_colmap_model,
+                       raw_output_folder / "ground_truth_depth" / "individual_pictures",
+                       raw_output_folder / "images",
+                       raw_output_folder / "occlusion_depth" / "individual_pictures",
+                       kitti_format_folder, viz_folder,
+                       images_list=individual_pictures,
+                       visualization=True, video=False, downscale=4, threads=8, **env)
+    if save_space:
+        (raw_output_folder / "occlusion_depth" / "individual_pictures").rmtree_p()

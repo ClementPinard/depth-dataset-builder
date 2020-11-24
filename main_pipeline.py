@@ -1,8 +1,8 @@
 import las2ply
 import numpy as np
 from wrappers import Colmap, FFMpeg, PDraw, ETH3D, PCLUtil
-from cli_utils import set_argparser, print_step, print_workflow
-from video_localization import localize_video, generate_GT
+from cli_utils import set_full_argparser, print_step, print_workflow, get_matrix
+from video_localization import localize_video, generate_GT, generate_GT_individual_pictures
 import meshlab_xml_writer as mxw
 import prepare_images as pi
 import prepare_workspace as pw
@@ -37,20 +37,21 @@ def prepare_point_clouds(pointclouds, lidar_path, verbose, eth3d, pcl_util, SOR,
 
 
 def main():
-    args = set_argparser().parse_args()
+    args = set_full_argparser().parse_args()
     env = vars(args)
     if args.show_steps:
         print_workflow()
         return
     if args.add_new_videos:
-        args.skip_step += [1, 2, 4, 5, 6]
+        env["resume_work"] = True
+        args.skip_step = [1, 2, 4, 5, 8]
     if args.begin_step is not None:
         args.skip_step += list(range(args.begin_step))
     pw.check_input_folder(args.input_folder)
     args.workspace = args.workspace.abspath()
     pw.prepare_workspace(args.workspace, env)
     colmap = Colmap(db=env["thorough_db"],
-                    image_path=env["image_path"],
+                    image_path=env["colmap_img_root"],
                     mask_path=env["mask_path"],
                     dense_workspace=env["dense_workspace"],
                     binary=args.colmap,
@@ -90,21 +91,24 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Pictures preparation")
-        env["existing_pictures"] = pi.extract_pictures_to_workspace(**env)
+        env["individual_pictures"] = pi.extract_pictures_to_workspace(**env)
     else:
-        env["existing_pictures"] = sum((list(env["image_path"].walkfiles('*{}'.format(ext))) for ext in env["pic_ext"]), [])
+        full_paths = sum((list(env["individual_pictures_path"].walkfiles('*{}'.format(ext))) for ext in env["pic_ext"]), [])
+        env["individual_pictures"] = [path.relpath(env["colmap_img_root"]) for path in full_paths]
 
     i += 1
+    # Get already existing_videos
+    env["videos_frames_folders"] = {}
+    by_name = {v.stem: v for v in env["videos_list"]}
+    for folder in env["video_path"].walkdirs():
+        video_name = folder.basename()
+        if video_name in by_name.keys():
+            env["videos_frames_folders"][by_name[video_name]] = folder
     if i not in args.skip_step:
         print_step(i, "Extracting Videos and selecting optimal frames for a thorough scan")
-        env["videos_frames_folders"] = pi.extract_videos_to_workspace(fps=args.lowfps, **env)
-    else:
-        env["videos_frames_folders"] = {}
-        by_name = {v.stem: v for v in env["videos_list"]}
-        for folder in env["video_path"].walkdirs():
-            video_name = folder.basename()
-            if video_name in by_name.keys():
-                env["videos_frames_folders"][by_name[video_name]] = folder
+        new_video_frame_folders = pi.extract_videos_to_workspace(fps=args.lowfps, **env)
+        # Concatenate both already treated videos and newly detected videos
+        env["videos_frames_folders"] = {**env["videos_frames_folders"], **new_video_frame_folders}
     env["videos_workspaces"] = {}
     for v, frames_folder in env["videos_frames_folders"].items():
         env["videos_workspaces"][v] = pw.prepare_video_workspace(v, frames_folder, **env)
@@ -127,6 +131,7 @@ def main():
     if i not in args.skip_step:
         print_step(i, "Alignment of photogrammetric reconstruction with GPS")
         env["georef_recon"].makedirs_p()
+        env["georef_full_recon"].makedirs_p()
         colmap.align_model(output=env["georef_recon"],
                            input=thorough_model,
                            ref_images=env["georef_frames_list"])
@@ -136,6 +141,9 @@ def main():
             thorough_model.merge_tree(env["georef_recon"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
     if args.inspect_dataset:
+        print("FIRST DATASET INSPECTION")
+        print("Inspection of localisalization of frames used in thorough mapping "
+              "w.r.t Sparse reconstruction")
         colmap.export_model(output=env["georef_recon"] / "georef_sparse.ply",
                             input=env["georef_recon"])
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
@@ -145,7 +153,7 @@ def main():
                             output_type="TXT")
         eth3d.inspect_dataset(scan_meshlab=georef_mlp,
                               colmap_model=env["georef_recon"],
-                              image_path=env["image_path"])
+                              image_path=env["colmap_img_root"])
 
     i += 1
     if i not in args.skip_step:
@@ -163,30 +171,13 @@ def main():
     i += 1
     if i not in args.skip_step:
         print_step(i, "Full reconstruction point cloud densificitation")
-        env["georef_full_recon"].makedirs_p()
         colmap.undistort(input=env["georef_full_recon"])
         colmap.dense_stereo(min_depth=env["stereo_min_depth"], max_depth=env["stereo_max_depth"])
         colmap.stereo_fusion(output=env["georefrecon_ply"])
 
-    def get_matrix(path):
-        if path.isfile():
-            '''Note : We use the inverse matrix here, because in general, it's easier to register the reconstructed model into the lidar one,
-            as the reconstructed will have less points, but in the end we need the matrix to apply to the lidar point to be aligned
-            with the camera positions (ie the inverse)'''
-            return np.linalg.inv(np.fromfile(path, sep=" ").reshape(4, 4))
-        else:
-            print("Error, no registration matrix can be found")
-            print("Ensure that your registration matrix was saved under the name {}".format(path))
-            decision = None
-            while decision not in ["y", "n", ""]:
-                decision = input("retry ? [Y/n]")
-            if decision.lower() in ["y", ""]:
-                return get_matrix(path)
-            elif decision.lower() == "n":
-                return np.eye(4)
     i += 1
     if i not in args.skip_step:
-        print_step(i, "Registration of photogrammetric reconstruction with respect to Lidar Point Cloud")
+        print_step(i, "Alignment of photogrammetric reconstruction with respect to Lidar Point Cloud")
         if args.registration_method == "eth3d":
             # Note : ETH3D doesn't register with scale, this might not be suitable for very large areas
             mxw.add_meshes_to_project(env["lidar_mlp"], env["aligned_mlp"], [env["georefrecon_ply"]], start_index=0)
@@ -248,22 +239,27 @@ def main():
     if args.inspect_dataset:
         # First inspection : Check registration of the Lidar pointcloud wrt to COLMAP model but without the occlusion mesh
         # Second inspection : Check the occlusion mesh and the splats
-        colmap.export_model(output=env["georef_full_recon"] / "georef_sparse.ply",
-                            input=env["georef_full_recon"])
         georef_mlp = env["georef_recon"]/"georef_recon.mlp"
         mxw.create_project(georef_mlp, [env["georefrecon_ply"]])
         colmap.export_model(output=env["georef_full_recon"],
                             input=env["georef_full_recon"],
                             output_type="TXT")
+        print("SECOND DATASET INSPECTION")
+        print("Inspection of localisalization of frames used in thorough mapping "
+              "w.r.t Dense reconstruction")
         eth3d.inspect_dataset(scan_meshlab=georef_mlp,
                               colmap_model=env["georef_full_recon"],
-                              image_path=env["image_path"])
+                              image_path=env["colmap_img_root"])
+        print("Inspection of localisalization of frames used in thorough mapping "
+              "w.r.t Aligned Lidar Point Cloud")
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_full_recon"],
-                              image_path=env["image_path"])
+                              image_path=env["colmap_img_root"])
+        print("Inspection of localisalization of frames used in thorough mapping "
+              "w.r.t Aligned Lidar Point Cloud and Occlusion Meshes")
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_full_recon"],
-                              image_path=env["image_path"],
+                              image_path=env["colmap_img_root"],
                               occlusions=env["occlusion_ply"],
                               splats=env["splats_ply"])
 
@@ -279,6 +275,9 @@ def main():
                         num_videos=len(env["videos_to_localize"]),
                         metadata=video_env["metadata"],
                         **video_env["output_env"], **env)
+        if env["generate_groundtruth_for_individual_images"]:
+            generate_GT_individual_pictures(input_colmap_model=env["georef_full_recon"],
+                                            step_index=i, **env)
 
 
 if __name__ == '__main__':

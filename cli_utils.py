@@ -1,11 +1,9 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
+import numpy as np
 
 
-def set_argparser():
-    parser = ArgumentParser(description='Main pipeline, from LIDAR pictures and videos to GT depth enabled videos',
-                            formatter_class=ArgumentDefaultsHelpFormatter)
-
+def add_main_options(parser):
     main_parser = parser.add_argument_group("Main options")
     main_parser.add_argument('--input_folder', metavar='PATH', default=Path("."), type=Path,
                              help="Folder with LAS point cloud, videos, and images")
@@ -21,7 +19,9 @@ def set_argparser():
     main_parser.add_argument('--begin_step', metavar="N", type=int, default=None)
     main_parser.add_argument('--show_steps', action="store_true")
     main_parser.add_argument('--add_new_videos', action="store_true",
-                             help="If selected, will skit first 6 steps to directly register videos without mapping")
+                             help="If selected, will skip first 6 steps to directly register videos without mapping")
+    main_parser.add_argument('--generate_groundtruth_for_individual_images', action="store_true",
+                             help="If selected, will generate Ground truth for individual images as well as videos")
     main_parser.add_argument('--save_space', action="store_true")
     main_parser.add_argument('-v', '--verbose', action="count", default=0)
     main_parser.add_argument('--resume_work', action="store_true",
@@ -36,7 +36,9 @@ def set_argparser():
     main_parser.add_argument('--raw_ext', nargs='+', default=[".ARW", ".NEF", ".DNG"],
                              help='Raw Image extensions to scrape from input folder')
 
-    pcp_parser = parser.add_argument_group("PointCLoud preparation")
+
+def add_pcp_options(parser):
+    pcp_parser = parser.add_argument_group("PointCloud preparation")
     pcp_parser.add_argument("--pointcloud_resolution", default=None, type=float,
                             help='If set, will subsample the Lidar point clouds at the chosen resolution')
     pcp_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
@@ -44,6 +46,8 @@ def set_argparser():
     pcp_parser.add_argument('--registration_method', choices=["simple", "eth3d", "interactive"], default="simple",
                             help='Method used for point cloud registration. See README, Manual step by step : step 11')
 
+
+def add_ve_options(parser):
     ve_parser = parser.add_argument_group("Video extractor")
     ve_parser.add_argument('--total_frames', default=500, type=int)
     ve_parser.add_argument('--orientation_weight', default=1, type=float,
@@ -66,7 +70,12 @@ def set_argparser():
     ve_parser.add_argument('--generic_model', default='OPENCV',
                            help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
                            'See https://colmap.github.io/cameras.html')
+    ve_parser.add_argument('--full_metadata', default=None,
+                           help='where to save all concatenated metadata in a file that will be used to add new videos afterward. '
+                                'If not set, will save at the root of workspace')
 
+
+def add_exec_options(parser):
     exec_parser = parser.add_argument_group("Executable files")
     exec_parser.add_argument('--log', default=None, type=Path)
     exec_parser.add_argument('--nw', default="native-wrapper.sh", type=Path,
@@ -78,6 +87,8 @@ def set_argparser():
     exec_parser.add_argument("--ffmpeg", default="ffmpeg", type=Path)
     exec_parser.add_argument("--pcl_util", default="pcl_util/build", type=Path)
 
+
+def add_pm_options(parser):
     pm_parser = parser.add_argument_group("Photogrammetry")
     pm_parser.add_argument('--max_num_matches', default=32768, type=int, help="max number of matches, lower it if you get GPU memory error")
     pm_parser.add_argument('--vocab_tree', type=Path, default="vocab_tree_flickr100K_words256K.bin")
@@ -94,6 +105,8 @@ def set_argparser():
     pm_parser.add_argument('--stereo_min_depth', type=float, default=0.1, help="Min depth for PatchMatch Stereo")
     pm_parser.add_argument('--stereo_max_depth', type=float, default=100, help="Max depth for PatchMatch Stereo")
 
+
+def add_om_options(parser):
     om_parser = parser.add_argument_group("Occlusion Mesh")
     om_parser.add_argument('--normals_method', default="radius", choices=["radius", "neighbours"],
                            help='Method used for normal computation between radius and nearest neighbours')
@@ -112,11 +125,69 @@ def set_argparser():
                            help='Splat size is defined by mean istance from its neighbours. You can define a max splat size for '
                                 'isolated points which otherwise would make a very large useless splat. '
                                 'If not set, will be `2.5*splat_threshold`.')
+
+
+def add_gt_options(parser):
     gt_parser = parser.add_argument_group("Ground Truth Creator")
     gt_parser.add_argument('--max_occlusion_depth', default=250, type=float,
                            help='max depth for occlusion. Everything further will not be considered at infinity')
     gt_parser.add_argument('--eth3d_splat_radius', default=0.01, type=float,
                            help='see splat radius for ETH3D')
+
+
+def set_full_argparser():
+    parser = ArgumentParser(description='Main pipeline, from LIDAR pictures and videos to GT depth enabled videos',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+
+    add_main_options(parser)
+    add_pcp_options(parser)
+    add_ve_options(parser)
+    add_exec_options(parser)
+    add_pm_options(parser)
+    add_om_options(parser)
+    add_gt_options(parser)
+    return parser
+
+
+def set_full_argparser_no_lidar():
+    parser = ArgumentParser(description='Main pipeline, from pictures and videos to GT depth enabled videos, '
+                                        'using only COLMAP (No lidar)',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+    add_main_options(parser)
+    add_ve_options(parser)
+    add_exec_options(parser)
+    add_pm_options(parser)
+    add_om_options(parser)
+    add_gt_options(parser)
+
+    parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
+                        help="Satistical Outlier Removal parameters : Number of nearest neighbours, "
+                             "max relative distance to standard deviation. "
+                             "This will be used for filtering dense reconstruction")
+    return parser
+
+
+def set_new_images_arparser():
+    parser = ArgumentParser(description='Additional pipeline, to add new pictures to an already existing workspace, '
+                                        'The main pipeline must be finished before launching this script, '
+                                        ' at least until reconstruction alignment',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+    add_main_options(parser)
+    add_exec_options(parser)
+    add_pm_options(parser)
+    add_om_options(parser)
+    add_gt_options(parser)
+
+    parser.add_argument("--map_new_images", action="store_true",
+                        help="if selected, will replace the 'omage_registrator' step with a full mapping step")
+    parser.add_argument("--bundle_adjustor_steps", default=100, type=int,
+                        help="number of iteration for bundle adjustor after image registration")
+    parser.add_argument("--rebuild_occlusion_mesh", action="store_true",
+                        help="If selected, will rebuild a new dense point cloud and deauney mesh. "
+                             "Useful when new images see new parts of the model")
+    parser.add_argument('--generic_model', default='OPENCV',
+                        help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
+                        'See https://colmap.github.io/cameras.html')
     return parser
 
 
@@ -159,3 +230,21 @@ def print_workflow():
     print("\tPer video:")
     for i, s in enumerate(per_vid_steps_2):
         print("\t{}) {}".format(i+1, s))
+
+
+def get_matrix(path):
+    if path.isfile():
+        '''Note : We use the inverse matrix here, because in general, it's easier to register the reconstructed model into the lidar one,
+        as the reconstructed will have less points, but in the end we need the matrix to apply to the lidar point to be aligned
+        with the camera positions (ie the inverse)'''
+        return np.linalg.inv(np.fromfile(path, sep=" ").reshape(4, 4))
+    else:
+        print("Error, no registration matrix can be found")
+        print("Ensure that your registration matrix was saved under the name {}".format(path))
+        decision = None
+        while decision not in ["y", "n", ""]:
+            decision = input("retry ? [Y/n]")
+        if decision.lower() in ["y", ""]:
+            return get_matrix(path)
+        elif decision.lower() == "n":
+            return np.eye(4)

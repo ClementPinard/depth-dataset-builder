@@ -68,9 +68,9 @@ def world_coord_from_frame(frame_qvec, frame_tvec):
     return cam_qvec, cam_tvec
 
 
-def set_gps(frames_list, metadata, image_path):
+def set_gps(frames_list, metadata, colmap_img_root):
     for frame in frames_list:
-        relative = str(frame.relpath(image_path))
+        relative = str(frame.relpath(colmap_img_root))
         row = metadata[metadata["image_path"] == relative]
         if len(row) > 0:
             row = row.iloc[0]
@@ -213,7 +213,8 @@ def get_video_metadata(v, output_video_folder, system, generic_model='OPENCV', *
                                            width, height, framerate)
             metadata["camera_model"] = "PINHOLE"
             device = "anafi"
-        except Exception:
+        except Exception as e:
+            raise e
             # No metadata found, construct a simpler dataframe without location
             metadata = generic_metadata()
             device = "generic"
@@ -222,10 +223,11 @@ def get_video_metadata(v, output_video_folder, system, generic_model='OPENCV', *
     return metadata, device, video_output_folder
 
 
-def process_video_folder(videos_list, existing_pictures, output_video_folder, image_path, centroid,
+def process_video_folder(videos_list, individual_pictures, output_video_folder, colmap_img_root, centroid,
                          thorough_db, fps=1, total_frames=500, orientation_weight=1, resolution_weight=1,
                          output_colmap_format="bin", save_space=False, include_lowfps_thorough=False,
-                         max_sequence_length=1000, num_neighbours=10, existing_georef=False, **env):
+                         max_sequence_length=1000, num_neighbours=10,
+                         existing_georef=False, existing_metadata=None, **env):
     metadata_list = []
     video_output_folders = {}
     images = {}
@@ -233,15 +235,24 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     tempfile_database = Path(tempfile.NamedTemporaryFile().name)
     if thorough_db.isfile():
         thorough_db.copy(thorough_db.stripext() + "_backup.db")
+    if existing_metadata is not None:
+        already_treated_videos = existing_metadata["video"].unique()
+        videos_to_treat = [v for v in videos_list if v not in already_treated_videos]
+        if len(videos_to_treat) == 0:
+            print("All videos already treated. "
+                  "Remove the file {} if you want to reprocess everything".format(env["full_metadata"]))
+            return None, {}, existing_metadata
+        print("Skipping {} already treated videos".format(len(already_treated_videos)))
+    else:
+        videos_to_treat = videos_list
     path_lists_output = {}
     database = db.COLMAPDatabase.connect(thorough_db)
     database.create_tables()
-
     print("extracting metadata for {} videos...".format(len(videos_list)))
     videos_summary = {"anafi": {"indoor": 0, "outdoor": 0},
                       "other": {"indoor": 0, "outdoor": 0},
                       "generic": 0}
-    for v in tqdm(videos_list):
+    for v in tqdm(videos_to_treat):
         metadata, device, output_folder = get_video_metadata(v, output_video_folder, **env)
         video_output_folders[v] = output_folder
         output_folder.makedirs_p()
@@ -320,7 +331,8 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
     print("Cameras : ")
     print(pd.concat(cam_dfs))
 
-    to_extract = total_frames - len(existing_pictures) - sum(final_metadata["sampled"])
+    already_sampled = sum(final_metadata["sampled"]) + (existing_metadata["sampled"] if existing_metadata is not None else 0)
+    to_extract = total_frames - len(individual_pictures) - already_sampled
 
     if to_extract <= 0:
         pass
@@ -346,7 +358,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
         video = row["video"]
         frame = row["frame"]
         camera_id = row["camera_id"]
-        current_image_path = video_output_folders[video].relpath(image_path) / video.stem + "_{:05d}.jpg".format(frame)
+        current_image_path = video_output_folders[video].relpath(colmap_img_root) / video.stem + "_{:05d}.jpg".format(frame)
 
         final_metadata.at[current_id, "image_path"] = current_image_path
         db_image_id = temp_database.add_image(current_image_path, int(camera_id))
@@ -386,7 +398,7 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
 
     print("Extracting frames from videos")
 
-    for v in tqdm(videos_list):
+    for v in tqdm(videos_to_treat):
         video_metadata = final_metadata[final_metadata["video"] == v]
         by_time = video_metadata.set_index(pd.to_datetime(video_metadata["time"], unit="us"))
         video_folder = video_output_folders[v]
@@ -412,9 +424,10 @@ def process_video_folder(videos_list, existing_pictures, output_video_folder, im
                 extracted_frames = env["ffmpeg"].extract_specific_frames(v, video_folder, frame_ids)
         else:
             extracted_frames = env["ffmpeg"].extract_images(v, video_folder)
-        set_gps(extracted_frames, video_metadata, image_path)
-
-    return path_lists_output, video_output_folders
+        set_gps(extracted_frames, video_metadata, colmap_img_root)
+    if existing_metadata is not None:
+        final_metadata = pd.concat([existing_metadata, final_metadata], ignore_index=True)
+    return path_lists_output, video_output_folders, final_metadata
 
 
 if __name__ == '__main__':
@@ -423,9 +436,8 @@ if __name__ == '__main__':
     env["videos_list"] = sum((list(args.video_folder.walkfiles('*{}'.format(ext))) for ext in args.vid_ext), [])
     output_video_folder = args.colmap_img_root / "Videos"
     output_video_folder.makedirs_p()
-    env["image_path"] = args.colmap_img_root
     env["output_video_folder"] = output_video_folder
-    env["existing_pictures"] = sum((list(args.colmap_img_root.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
+    env["individual_pictures"] = sum((list(args.colmap_img_root.walkfiles('*{}'.format(ext))) for ext in args.pic_ext), [])
     env["pdraw"] = PDraw(args.nw, verbose=args.verbose)
     env["ffmpeg"] = FFMpeg(verbose=args.verbose)
     env["output_colmap_format"] = args.output_format
@@ -435,14 +447,17 @@ if __name__ == '__main__':
     else:
         centroid = np.zeros(3)
     env["centroid"] = centroid
-    lists, extracted_video_folders = process_video_folder(**env)
+    lists, extracted_video_folders, full_metadata = process_video_folder(**env)
 
     if lists is not None:
+        full_metadata.to_csv(args.colmap_img_root/"full_video_metadata.csv")
         with open(args.colmap_img_root/"video_frames_for_thorough_scan.txt", "w") as f:
             f.write("\n".join(lists["thorough"]["frames"]) + "\n")
         with open(args.colmap_img_root/"georef.txt", "w") as f:
             f.write("\n".join(lists["thorough"]["georef"]))
         for v in env["videos_list"]:
+            if v not in extracted_video_folders.keys():
+                continue
             video_folder = extracted_video_folders[v]
             with open(video_folder / "lowfps.txt", "w") as f:
                 f.write("\n".join(lists[v]["frames_lowfps"]) + "\n")

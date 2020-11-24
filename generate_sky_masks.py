@@ -58,13 +58,13 @@ def extract_sky_mask(network, image_paths, mask_folder):
         imageio.imwrite(mask_folder/(path.basename() + '.png'), (f*255).astype(np.uint8))
 
 
-def process_folder(folder_to_process, image_path, mask_path, pic_ext, verbose=False, batchsize=8, **env):
+def process_folder(folder_to_process, colmap_img_root, mask_path, pic_ext, verbose=False, batchsize=8, **env):
     network = prepare_network()
     folders = [folder_to_process] + list(folder_to_process.walkdirs())
 
     for folder in folders:
 
-        mask_folder = mask_path/image_path.relpathto(folder)
+        mask_folder = mask_path/colmap_img_root.relpathto(folder)
         mask_folder.makedirs_p()
         images = sum((folder.files('*{}'.format(ext)) for ext in pic_ext), [])
         if images:

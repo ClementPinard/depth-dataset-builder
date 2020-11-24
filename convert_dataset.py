@@ -11,11 +11,11 @@ from tqdm import tqdm
 from wrappers import FFMpeg
 import gzip
 from pebble import ProcessPool
-import pandas as pd
+import yaml
 
 
-def save_intrinsics(cameras, images, output_dir, downscale=1):
-    def construct_intrinsics(cam):
+def save_intrinsics(cameras, images, output_dir, output_width=None, downscale=None):
+    def construct_intrinsics(cam, downscale):
         # assert('PINHOLE' in cam.model)
         if 'SIMPLE' in cam.model:
             fx, cx, cy, *_ = cam.params
@@ -27,16 +27,32 @@ def save_intrinsics(cameras, images, output_dir, downscale=1):
                          [0, fy / downscale, cy / downscale],
                          [0, 0, 1]])
 
+    def save_cam(cam, intrinsics_path, yaml_path):
+        if downscale is None:
+            current_downscale = output_width / cam.width
+        else:
+            current_downscale = downscale
+        intrinsics = construct_intrinsics(cam, current_downscale)
+        np.savetxt(intrinsics_path, intrinsics)
+        with open(yaml_path, 'w') as f:
+            camera_dict = {"model": cam.model,
+                           "params": cam.params,
+                           "width": cam.width / current_downscale,
+                           "height": cam.height / current_downscale}
+            yaml.dump(camera_dict, f, default_flow_style=False)
+
     if len(cameras) == 1:
+        print("bonjour")
         cam = cameras[list(cameras.keys())[0]]
-        intrinsics = construct_intrinsics(cam)
-        np.savetxt(output_dir / 'intrinsics.txt', intrinsics)
+        save_cam(cam, output_dir / "intrinsics.txt", output_dir / "camera.yaml")
+
     else:
+        print("au revoir")
         for _, img in images.items():
             cam = cameras[img.camera_id]
-            intrinsics = construct_intrinsics(cam)
-            intrinsics_name = output_dir / Path(img.name).stem + "_intrinsics.txt"
-            np.savetxt(intrinsics_name, intrinsics)
+
+            save_cam(cam, output_dir / Path(img.name).stem + "_intrinsics.txt",
+                     output_dir / Path(img.name).stem + "_camera.yaml")
 
 
 def to_transform_matrix(q, t):
@@ -179,27 +195,37 @@ parser.add_argument('--verbose', '-v', action='count', default=0)
 
 
 def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
-                    dataset_output_dir, video_output_dir, metadata_path, interpolated_frames,
-                    ffmpeg, threads=8, downscale=None, compressed=True,
+                    dataset_output_dir, video_output_dir, ffmpeg,
+                    interpolated_frames=[], metadata=None, images_list=None,
+                    threads=8, downscale=None, compressed=True,
                     width=None, visualization=False, video=False, verbose=0, **env):
     dataset_output_dir.makedirs_p()
     video_output_dir.makedirs_p()
     if video:
         visualization = True
     cameras, images, _ = rm.read_model(final_model, '.txt')
-    metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
-    framerate = metadata["framerate"].values[0]
+    # image_df = pd.DataFrame.from_dict(images, orient="index").set_index("id")
+
+    if metadata is not None:
+        metadata = metadata.set_index("db_id", drop=False).sort_values("time")
+        framerate = metadata["framerate"].values[0]
+        # image_df = image_df.reindex(metadata.index)
+        images_list = metadata["image_path"]
+    else:
+        assert images_list is not None
+        framerate = None
+        video = False
+
+    # Discard images and cameras that are not represented by the image list
+    images = {k: i for k, i in images.items() if i.name in images_list}
+    cameras_ids = set([i.camera_id for i in images.values()])
+    cameras = {k: cameras[k] for k in cameras_ids}
+
     if downscale is None:
-        assert(width is not None)
-
-        input_width = metadata["width"].values[0]
-        downscale = width / input_width
-
-    save_intrinsics(cameras, images, dataset_output_dir, downscale)
+        assert width is not None
+    save_intrinsics(cameras, images, dataset_output_dir, width, downscale)
     save_positions(images, dataset_output_dir)
 
-    image_df = pd.DataFrame.from_dict(images, orient="index").set_index("id")
-    image_df = image_df.reindex(metadata.index)
     depth_maps = []
     occ_maps = []
     interpolated = []
@@ -207,7 +233,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     cameras = []
     not_registered = 0
 
-    for i in metadata["image_path"]:
+    for i in images_list:
         img_path = images_root_folder / i
         imgs.append(img_path)
 
@@ -236,8 +262,8 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
             depth_maps.append(None)
             occ_maps.append(None)
             interpolated.append(False)
-    print('{}/{} Frames not registered ({:.2f}%)'.format(not_registered, len(metadata), 100*not_registered/len(metadata)))
-    print('{}/{} Frames interpolated ({:.2f}%)'.format(sum(interpolated), len(metadata), 100*sum(interpolated)/len(metadata)))
+    print('{}/{} Frames not registered ({:.2f}%)'.format(not_registered, len(images_list), 100*not_registered/len(images_list)))
+    print('{}/{} Frames interpolated ({:.2f}%)'.format(sum(interpolated), len(images_list), 100*sum(interpolated)/len(images_list)))
     if threads == 1:
         for i, d, o, n in tqdm(zip(imgs, depth_maps, occ_maps, interpolated), total=len(imgs)):
             process_one_frame(i, d, o, dataset_output_dir, video_output_dir, downscale, n, visualization, viz_width=1920)

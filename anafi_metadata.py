@@ -37,14 +37,13 @@ def preprocess_metadata(metadata, proj):
         metadata["indoor"] = False
         if 0 in metadata["location_valid"].unique():
             location_validity = metadata["location_valid"].diff()
-
             invalidity_start = location_validity.index[location_validity == -1].tolist()
             validity_start = location_validity.index[location_validity == 1].tolist()
 
-            if metadata["location_valid"].iloc[0]:
+            if not metadata["location_valid"].iloc[0]:
                 end = validity_start.pop(0)
                 positions[:end] = extrapolate_position(speed[:end], timestamps[:end], None, positions[end])
-            if metadata["location_valid"].iloc[-1]:
+            if not metadata["location_valid"].iloc[-1]:
                 start = invalidity_start.pop(-1) - 1
                 positions[start:] = extrapolate_position(speed[start:], timestamps[start:], positions[start], None)
 

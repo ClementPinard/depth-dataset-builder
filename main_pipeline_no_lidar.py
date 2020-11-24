@@ -1,6 +1,6 @@
 import numpy as np
 from wrappers import Colmap, FFMpeg, PDraw, ETH3D, PCLUtil
-from cli_utils import set_argparser, print_step, print_workflow
+from cli_utils import set_full_argparser, print_step, print_workflow
 from video_localization import localize_video, generate_GT
 import meshlab_xml_writer as mxw
 import prepare_images as pi
@@ -8,7 +8,7 @@ import prepare_workspace as pw
 
 
 def main():
-    args = set_argparser().parse_args()
+    args = set_full_argparser().parse_args()
     env = vars(args)
     if args.show_steps:
         print_workflow()
@@ -21,7 +21,7 @@ def main():
     args.workspace = args.workspace.abspath()
     pw.prepare_workspace(args.workspace, env, with_lidar=False)
     colmap = Colmap(db=env["thorough_db"],
-                    image_path=env["image_path"],
+                    image_path=env["colmap_img_root"],
                     mask_path=env["mask_path"],
                     dense_workspace=env["dense_workspace"],
                     binary=args.colmap,
@@ -49,7 +49,7 @@ def main():
         print_step(i, "Pictures preparation")
         env["existing_pictures"] = pi.extract_pictures_to_workspace(**env)
     else:
-        env["existing_pictures"] = sum((list(env["image_path"].walkfiles('*{}'.format(ext))) for ext in env["pic_ext"]), [])
+        env["existing_pictures"] = sum((list(env["colmap_img_root"].walkfiles('*{}'.format(ext))) for ext in env["pic_ext"]), [])
 
     i += 1
     if i not in args.skip_step:
@@ -103,7 +103,7 @@ def main():
                             output_type="TXT")
         eth3d.inspect_dataset(scan_meshlab=georef_mlp,
                               colmap_model=env["georef_recon"],
-                              image_path=env["image_path"])
+                              image_path=env["colmap_img_root"])
 
     i += 1
     if i not in args.skip_step:
@@ -146,10 +146,10 @@ def main():
     if args.inspect_dataset:
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_recon"],
-                              image_path=env["image_path"])
+                              image_path=env["colmap_img_root"])
         eth3d.inspect_dataset(scan_meshlab=env["aligned_mlp"],
                               colmap_model=env["georef_recon"],
-                              image_path=env["image_path"],
+                              image_path=env["colmap_img_root"],
                               occlusions=env["occlusion_ply"],
                               splats=env["splats_ply"])
 

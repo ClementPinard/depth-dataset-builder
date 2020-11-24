@@ -23,7 +23,6 @@ def load_and_convert(input_file, output_folder, verbose=False):
     file_type = input_file.ext[1:].upper()
     if file_type == "LAS":
         offset = np.array(laspy.file.File(input_file, mode="r").header.offset)
-        print(offset)
     else:
         offset = np.zeros(3)
     cloud = PyntCloud.from_file(input_file)
