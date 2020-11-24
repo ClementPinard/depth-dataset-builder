@@ -301,13 +301,18 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
                                     aligned_mlp, relpath,
                                     occlusion_ply, splats_ply,
                                     eth3d, colmap, step_index=None,
-                                    save_space=False, **env):
+                                    save_space=False, resume_work=False, **env):
     def print_step_pv(step_number, step_name):
         if step_index is not None:
             print_step("{}.{}".format(step_index, step_number), step_name)
         else:
             print_step(step_index, step_name)
 
+    ground_truth_depth_folder = raw_output_folder / "ground_truth_depth" / relpath.stem
+    occlusion_depth_folder = raw_output_folder / "occlusion_depth" / relpath.stem
+    if resume_work and ground_truth_depth_folder.isdir():
+        print("Directory {} already done, skipping...".format(relpath))
+        return
     i_pv = 1
     print_step_pv(i_pv, "Copy individual images to output dataset {}".format(raw_output_folder))
     for p in individual_pictures:
@@ -317,7 +322,7 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
 
     i_pv += 1
     print_step_pv(i_pv, "Extract individual images to dedicated COLMAP model")
-    pictures_colmap_model = raw_output_folder / "models" / "individual_pictures"
+    pictures_colmap_model = raw_output_folder / "models" / relpath
     pictures_colmap_model.makedirs_p()
     epfm.extract_pictures(input=input_colmap_model,
                           output=pictures_colmap_model,
@@ -339,9 +344,9 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
     i_pv += 1
     print_step_pv(i_pv, "Convert to KITTI format and create pictures with GT visualization")
     cd.convert_dataset(pictures_colmap_model,
-                       raw_output_folder / "ground_truth_depth" / "individual_pictures",
+                       ground_truth_depth_folder,
                        raw_output_folder / "images",
-                       raw_output_folder / "occlusion_depth" / "individual_pictures",
+                       occlusion_depth_folder,
                        kitti_format_folder, viz_folder,
                        images_list=individual_pictures,
                        visualization=True, video=False, downscale=4, threads=8, **env)

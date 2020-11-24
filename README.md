@@ -9,6 +9,7 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 * [Hardware Dependencies](#hardware-dependencies)
 * [How it works](#how-it-works)
 * [Step by step guide](#usage)
+* [Special case : adding new images to an existing constructed dataset](#special-case-adding-new-images-to-an-existing-dataset)
 * [Detailed method with the manoir example](#detailed-method-with-the-manoir-example)
 
 
@@ -731,6 +732,34 @@ This will essentially do the same thing as the script, in order to let you chang
     --downscale 4 \
     --threads 8
     ```
+
+### Special case : Adding new images to an existing dataset
+
+In case you already have constructed a dataset and you still have the workspace that used available, you can easily add new images to the dataset. See https://colmap.github.io/faq.html#register-localize-new-images-into-an-existing-reconstruction
+
+The main task is to localize news images in the thorough model, and use the already computed Lidar cloud alignment to deduce the new depth.
+
+The basic steps are :
+    
+    1. Extract feature of new frames
+    2. Match extracted features with frames of first database (usually named `scan_thorough.db`)
+    3. Either run `colmap mapper` or `colmap image_registrator` in order to have a model where the new frames are registered
+    4. (Optional) Re-build the Occlusion mesh. This can be important if the new images see parts of the model that were unseen before. Delaunay Meshing will have occluded it, as since it is not seen by any localized image, it was deemed in the interior of the model. 
+        - Run Point cloud densification. If workspace is intact, it should be very fast, as it will only compute depth maps of new images
+        - Run stereo fusion
+        - Transfer visibility from dense reconstruction to Lidar point cloud
+        - Run delauney mesher on Lidar point cloud with new visibility index
+        - Run splat creator
+    4. Extract desired frames in a new colmap model only containing these frames.
+    5. Run ETH3D's `GroundTruthCreator` on the extracte colmap model
+    6. run `convert_dataset` on every subfolder of the new frames
+
+All these steps can be done under the script `picture_localization.py` with the same options as the script `main_pipeline.py`, except when unneeded. To these options are added 4 more options:
+    * `--map_new_images`: if selected, will replace the 'omage_registrator' step with a full mapping step
+    * `--bundle_adjuster_steps` : number of iteration for bundle adjustor after image registration (default: 100)
+    * `--rebuild_occlusion_mesh` : If selected, will rebuild a new dense point cloud and delauney mesh. Useful when new images see new parts of  the model
+    * `--generic_model` : COLMAP model for image folders. Same zoom level assumed throughout whole folders. See https://colmap.github.io/cameras.html (default: OPENCV)
+
 
 ## Detailed method with the "Manoir" example
 

@@ -160,10 +160,11 @@ def set_full_argparser_no_lidar():
     add_om_options(parser)
     add_gt_options(parser)
 
-    parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
-                        help="Satistical Outlier Removal parameters : Number of nearest neighbours, "
-                             "max relative distance to standard deviation. "
-                             "This will be used for filtering dense reconstruction")
+    nl_parser = parser.add_argument_group("Main pipeline no Lidar specific options")
+    nl_parser.add_argument("--SOR", default=[10, 6], nargs=2, type=float,
+                           help="Satistical Outlier Removal parameters : Number of nearest neighbours, "
+                                "max relative distance to standard deviation. "
+                                "This will be used for filtering dense reconstruction")
     return parser
 
 
@@ -178,16 +179,18 @@ def set_new_images_arparser():
     add_om_options(parser)
     add_gt_options(parser)
 
-    parser.add_argument("--map_new_images", action="store_true",
-                        help="if selected, will replace the 'omage_registrator' step with a full mapping step")
-    parser.add_argument("--bundle_adjustor_steps", default=100, type=int,
-                        help="number of iteration for bundle adjustor after image registration")
-    parser.add_argument("--rebuild_occlusion_mesh", action="store_true",
-                        help="If selected, will rebuild a new dense point cloud and deauney mesh. "
-                             "Useful when new images see new parts of the model")
-    parser.add_argument('--generic_model', default='OPENCV',
-                        help='COLMAP model for generic videos. Same zoom level assumed throughout the whole video. '
-                        'See https://colmap.github.io/cameras.html')
+    ni_parser = parser.add_argument_group("Add new pictures specific options")
+
+    ni_parser.add_argument("--map_new_images", action="store_true",
+                           help="if selected, will replace the 'omage_registrator' step with a full mapping step")
+    ni_parser.add_argument("--bundle_adjuster_steps", default=100, type=int,
+                           help="number of iteration for bundle adjustor after image registration")
+    ni_parser.add_argument("--rebuild_occlusion_mesh", action="store_true",
+                           help="If selected, will rebuild a new dense point cloud and deauney mesh. "
+                                "Useful when new images see new parts of the model")
+    ni_parser.add_argument('--generic_model', default='OPENCV',
+                           help='COLMAP model for added pictures. Same zoom level assumed throughout whole folders. '
+                           'See https://colmap.github.io/cameras.html')
     return parser
 
 

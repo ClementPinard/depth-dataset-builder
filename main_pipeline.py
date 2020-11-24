@@ -276,7 +276,11 @@ def main():
                         metadata=video_env["metadata"],
                         **video_env["output_env"], **env)
         if env["generate_groundtruth_for_individual_images"]:
+            by_folder = pi.group_pics_by_folder(env["individual_pictures"])
+        for folder, pic_list in by_folder.items():
             generate_GT_individual_pictures(input_colmap_model=env["georef_full_recon"],
+                                            individual_pictures=pic_list,
+                                            relpath=folder,
                                             step_index=i, **env)
 
 
