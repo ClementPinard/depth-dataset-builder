@@ -273,15 +273,15 @@ def main():
                         video_index=j+1,
                         step_index=i,
                         num_videos=len(env["videos_to_localize"]),
-                        metadata=video_env["metadata"],
+                        metadata_path=video_env["metadata_path"],
                         **video_env["output_env"], **env)
         if env["generate_groundtruth_for_individual_images"]:
             by_folder = pi.group_pics_by_folder(env["individual_pictures"])
-        for folder, pic_list in by_folder.items():
-            generate_GT_individual_pictures(input_colmap_model=env["georef_full_recon"],
-                                            individual_pictures=pic_list,
-                                            relpath=folder,
-                                            step_index=i, **env)
+            for folder, pic_list in by_folder.items():
+                generate_GT_individual_pictures(input_colmap_model=env["georef_full_recon"],
+                                                individual_pictures_list=pic_list,
+                                                relpath=folder,
+                                                step_index=i, **env)
 
 
 if __name__ == '__main__':

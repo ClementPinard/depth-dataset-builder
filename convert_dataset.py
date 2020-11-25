@@ -42,12 +42,10 @@ def save_intrinsics(cameras, images, output_dir, output_width=None, downscale=No
             yaml.dump(camera_dict, f, default_flow_style=False)
 
     if len(cameras) == 1:
-        print("bonjour")
         cam = cameras[list(cameras.keys())[0]]
         save_cam(cam, output_dir / "intrinsics.txt", output_dir / "camera.yaml")
 
     else:
-        print("au revoir")
         for _, img in images.items():
             cam = cameras[img.camera_id]
 
@@ -210,7 +208,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         metadata = metadata.set_index("db_id", drop=False).sort_values("time")
         framerate = metadata["framerate"].values[0]
         # image_df = image_df.reindex(metadata.index)
-        images_list = metadata["image_path"]
+        images_list = metadata["image_path"].values
     else:
         assert images_list is not None
         framerate = None

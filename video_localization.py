@@ -15,7 +15,7 @@ import meshlab_xml_writer as mxw
 def is_video_in_model(video_name, colmap_model, metadata):
 
     mapped_images_ids = read_images_binary(colmap_model/"images.bin").keys()
-    video_image_ids = pd.read_csv(metadata)["db_id"]
+    video_image_ids = metadata["db_id"]
     return sum(video_image_ids.isin(mapped_images_ids)) > 0
 
 
@@ -273,8 +273,8 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     i_pv += 1
     print_step_pv(i_pv, "Creating Ground truth data with ETH3D")
 
-    eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
-                              final_occlusions, final_splats)
+    # eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
+    #                           final_occlusions, final_splats)
     viz_folder.makedirs_p()
     kitti_format_folder.makedirs_p()
 
@@ -286,7 +286,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                        images_root_folder,
                        raw_output_folder / "occlusion_depth" / video_name.stem,
                        kitti_format_folder, viz_folder,
-                       metadata, interpolated_frames,
+                       metadata=metadata, interpolated_frames=interpolated_frames,
                        visualization=True, video=True, downscale=4, threads=8, **env)
     if filter_models:
         interpolated_frames_list.copy(kitti_format_folder)
@@ -296,7 +296,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     return
 
 
-def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_output_folder,
+def generate_GT_individual_pictures(colmap_img_root, individual_pictures_list, raw_output_folder,
                                     converted_output_folder, input_colmap_model,
                                     aligned_mlp, relpath,
                                     occlusion_ply, splats_ply,
@@ -315,7 +315,7 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
         return
     i_pv = 1
     print_step_pv(i_pv, "Copy individual images to output dataset {}".format(raw_output_folder))
-    for p in individual_pictures:
+    for p in individual_pictures_list:
         output_path = raw_output_folder / "images" / p
         output_path.parent.makedirs_p()
         (colmap_img_root / p).copy(output_path)
@@ -326,7 +326,7 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
     pictures_colmap_model.makedirs_p()
     epfm.extract_pictures(input=input_colmap_model,
                           output=pictures_colmap_model,
-                          picture_list=individual_pictures,
+                          picture_list=individual_pictures_list,
                           output_format=".txt")
 
     i_pv += 1
@@ -348,7 +348,7 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures, raw_ou
                        raw_output_folder / "images",
                        occlusion_depth_folder,
                        kitti_format_folder, viz_folder,
-                       images_list=individual_pictures,
+                       images_list=individual_pictures_list,
                        visualization=True, video=False, downscale=4, threads=8, **env)
     if save_space:
         (raw_output_folder / "occlusion_depth" / "individual_pictures").rmtree_p()

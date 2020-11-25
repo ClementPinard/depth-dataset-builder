@@ -17,8 +17,7 @@ parser.add_argument('--database', metavar='DB', required=True,
                     help='path to colmap database file, to get the image ids right')
 
 
-def add_to_db(db_path, metadata_path, frame_list_path, **env):
-    metadata = pd.read_csv(metadata_path)
+def add_to_db(db_path, metadata, frame_list_path, **env):
     database = db.COLMAPDatabase.connect(db_path)
 
     frame_list = []
@@ -62,7 +61,7 @@ def get_frame_without_features(db_path):
 
 def main():
     args = parser.parse_args()
-    add_to_db(args.database, args.metadata, args.frame_list)
+    add_to_db(args.database, pd.read_csv(args.metadata), args.frame_list)
 
     return
 

@@ -20,7 +20,7 @@ def add_main_options(parser):
     main_parser.add_argument('--show_steps', action="store_true")
     main_parser.add_argument('--add_new_videos', action="store_true",
                              help="If selected, will skip first 6 steps to directly register videos without mapping")
-    main_parser.add_argument('--generate_groundtruth_for_individual_images', action="store_true",
+    main_parser.add_argument('--generate_groundtruth_for_individual_images', '--gt_images', action="store_true",
                              help="If selected, will generate Ground truth for individual images as well as videos")
     main_parser.add_argument('--save_space', action="store_true")
     main_parser.add_argument('-v', '--verbose', action="count", default=0)
