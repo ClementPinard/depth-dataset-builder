@@ -273,8 +273,8 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
     i_pv += 1
     print_step_pv(i_pv, "Creating Ground truth data with ETH3D")
 
-    # eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
-    #                           final_occlusions, final_splats)
+    eth3d.create_ground_truth(final_mlp, final_model, raw_output_folder,
+                              final_occlusions, final_splats)
     viz_folder.makedirs_p()
     kitti_format_folder.makedirs_p()
 

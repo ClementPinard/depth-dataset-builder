@@ -91,6 +91,9 @@ def add_exec_options(parser):
 def add_pm_options(parser):
     pm_parser = parser.add_argument_group("Photogrammetry")
     pm_parser.add_argument('--max_num_matches', default=32768, type=int, help="max number of matches, lower it if you get GPU memory error")
+    pm_parser.add_argument('--match_method', default='vocab_tree', choices=['vocab_tree', 'exhaustive'],
+                           help='Match method for first thorough photogrammetry, '
+                                'see https://colmap.github.io/tutorial.html#feature-matching-and-geometric-verification')
     pm_parser.add_argument('--vocab_tree', type=Path, default="vocab_tree_flickr100K_words256K.bin")
     pm_parser.add_argument('--triangulate', action="store_true")
     pm_parser.add_argument('--multiple_models', action='store_true', help='If selected, will let colmap mapper do multiple models.'

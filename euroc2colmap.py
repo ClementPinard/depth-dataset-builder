@@ -3,10 +3,12 @@ import numpy as np
 from path import Path
 import yaml
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from colmap_util.read_model import Image, Camera, Point3D, write_model, qvec2rotmat, rotmat2qvec
+from colmap_util.read_model import Image, Camera, Point3D, write_model, rotmat2qvec, CAMERA_MODEL_NAMES
+from colmap_util.database import COLMAPDatabase
 from tqdm import tqdm
 from pyntcloud import PyntCloud
-from itertools import islice
+from scipy.spatial.transform import Rotation, Slerp
+from scipy.interpolate import interp1d
 
 parser = ArgumentParser(description='Convert EuroC dataset to COLMAP',
                         formatter_class=ArgumentDefaultsHelpFormatter)
@@ -43,14 +45,9 @@ def get_vicon_calib(yaml_path):
     return np.array(calib["data"]).reshape((calib["rows"], calib["cols"]))
 
 
-def create_image(img_id, cam_id, file_path, drone_pose, image_calib, vicon_calib):
-    t_prefix = " p_RS_R_{} [m]"
-    q_prefix = " q_RS_{} []"
-    drone_tvec = drone_pose[[t_prefix.format(dim) for dim in 'xyz']].to_numpy().reshape(3, 1)
-    drone_qvec = drone_pose[[q_prefix.format(dim) for dim in 'wxyz']].to_numpy()
-    drone_R = qvec2rotmat(drone_qvec)
-    drone_matrix = np.concatenate((np.hstack((drone_R, drone_tvec)), np.array([0, 0, 0, 1]).reshape(1, 4)))
-    image_matrix = drone_matrix @ np.linalg.inv(vicon_calib) @ image_calib
+def create_image(img_id, cam_id, file_path, drone_tvec, drone_matrix, image_calib, vicon_calib):
+    drone_full_matrix = np.concatenate((np.hstack((drone_matrix, drone_tvec[:, None])), np.array([0, 0, 0, 1]).reshape(1, 4)))
+    image_matrix = drone_full_matrix @ np.linalg.inv(vicon_calib) @ image_calib
     colmap_matrix = np.linalg.inv(image_matrix)
     colmap_qvec = rotmat2qvec(colmap_matrix[:3, :3])
     colmap_tvec = colmap_matrix[:3, -1]
@@ -71,10 +68,19 @@ def main():
     vicon_poses = pd.read_csv(vicon_dir/"data.csv")
     vicon_poses = vicon_poses.set_index("#timestamp")
     vicon_calib = get_vicon_calib(vicon_dir/"sensor.yaml")
+    min_ts, max_ts = min(vicon_poses.index), max(vicon_poses.index)
+    t_prefix = " p_RS_R_{} [m]"
+    q_prefix = " q_RS_{} []"
+    drone_tvec = vicon_poses[[t_prefix.format(dim) for dim in 'xyz']].values
+    drone_qvec = Rotation.from_quat(vicon_poses[[q_prefix.format(dim) for dim in 'xyzw']].values)
+    drone_qvec_slerp = Slerp(vicon_poses.index, drone_qvec)
+    drone_tvec_interp = interp1d(vicon_poses.index, drone_tvec.T)
     cameras = {}
     images = {}
     image_list = []
     image_georef = []
+    database = COLMAPDatabase.connect(args.root/"database.db")
+    database.create_tables()
     for cam_id, cam in enumerate(cam_dirs):
         print("Converting camera {} ...".format(cam))
         if len(images.keys()) == 0:
@@ -82,18 +88,27 @@ def main():
         else:
             last_image_id = max(images.keys())
         cameras[cam_id], cam_calib = get_cam(cam/"sensor.yaml", cam_id)
+        model_id = CAMERA_MODEL_NAMES["OPENCV"].model_id
+        database.add_camera(model_id, cameras[cam_id].width, cameras[cam_id].height, cameras[cam_id].params)
 
-        image_names = pd.read_csv(cam/"data.csv")
+        metadata = pd.read_csv(cam/"data.csv")
+        metadata["time"] = metadata['#timestamp [ns]']
+        metadata = metadata[(metadata['time'] > min_ts) & (metadata['time'] < max_ts)]
+        tvec_interpolated = drone_tvec_interp(metadata['time']).T
+        qvec_interpolated = drone_qvec_slerp(metadata['time'])
         image_root = cam/"data"
-        step = 1
-        for img_id, (_, (ts, filename)) in tqdm(enumerate(islice(image_names.iterrows(), 0, None, step)), total=len(image_names.index)//step):
+        step = 10
+        for img_id, (filename, current_tvec, current_qvec) in tqdm(enumerate(zip(metadata["filename"].values[::step],
+                                                                                 tvec_interpolated[::step],
+                                                                                 qvec_interpolated[::step])),
+                                                                   total=len(metadata)):
             final_path = (image_root/filename).relpath(args.img_root)
             image_list.append(final_path)
-            row_index = vicon_poses.index.get_loc(ts, method='nearest')
-            current_drone_pose = vicon_poses.iloc[row_index]
             images[1 + img_id + last_image_id], georef = create_image(1 + img_id + last_image_id, cam_id,
-                                                                      final_path, current_drone_pose,
+                                                                      final_path, current_tvec,
+                                                                      current_qvec.as_matrix(),
                                                                       cam_calib, vicon_calib)
+            database.add_image(final_path, camera_id=cam_id, image_id=1 + img_id + last_image_id)
             image_georef.append(georef)
 
     points = {}
