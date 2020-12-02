@@ -75,9 +75,8 @@ def extract_metadata(folder_path, file_path, native_wrapper, proj, w, h, f, save
     metadata['frame'] = metadata.index + 1
     metadata["location_valid"] = metadata["location_valid"] == 1
     fx = metadata["width"] / (2 * np.tan(metadata["picture_hfov"] * np.pi/360))
-    fy = metadata["v_focal"] = metadata["height"] / (2 * np.tan(metadata["picture_vfov"] * np.pi/360))
-    params = np.stack([fx.values, fy.values], axis=-1)
-    print(params.shape)
+    fy = metadata["height"] / (2 * np.tan(metadata["picture_vfov"] * np.pi/360))
+    params = np.stack([fx.values, fy.values, metadata["width"]/2, metadata["height"]/2], axis=-1)
     metadata["camera_params"] = [tuple(p) for p in params]
 
     if save_path is not None:

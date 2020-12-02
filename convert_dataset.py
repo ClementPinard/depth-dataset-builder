@@ -12,12 +12,13 @@ from wrappers import FFMpeg
 import gzip
 from pebble import ProcessPool
 import yaml
+from itertools import product
 
 
 def save_intrinsics(cameras, images, output_dir, output_width=None, downscale=None):
     def construct_intrinsics(cam, downscale):
         # assert('PINHOLE' in cam.model)
-        if 'SIMPLE' in cam.model:
+        if 'SIMPLE' in cam.model or 'RADIAL' in cam.model:
             fx, cx, cy, *_ = cam.params
             fy = fx
         else:
@@ -36,7 +37,7 @@ def save_intrinsics(cameras, images, output_dir, output_width=None, downscale=No
         np.savetxt(intrinsics_path, intrinsics)
         with open(yaml_path, 'w') as f:
             camera_dict = {"model": cam.model,
-                           "params": cam.params,
+                           "params": cam.params.tolist(),
                            "width": cam.width / current_downscale,
                            "height": cam.height / current_downscale}
             yaml.dump(camera_dict, f, default_flow_style=False)
@@ -60,17 +61,22 @@ def to_transform_matrix(q, t):
     return transform
 
 
-def save_positions(images, output_dir):
+def save_poses(images, images_list, output_dir):
     starting_pos = None
-    positions = []
-    for _, img in images.items():
-        current_pos = to_transform_matrix(img.qvec, img.tvec)
-        if starting_pos is None:
-            starting_pos = current_pos
-        relative_position = np.linalg.inv(starting_pos) @ current_pos
-        positions.append(relative_position[:3])
-    positions = np.stack(positions)
-    np.savetxt(output_dir/'poses.txt', positions.reshape((len(images), -1)))
+    poses = []
+    for i in images_list:
+        try:
+            img = images[i]
+            current_pos = to_transform_matrix(img.qvec, img.tvec)
+            if starting_pos is None:
+                starting_pos = current_pos
+            relative_position = np.linalg.inv(starting_pos) @ current_pos
+            poses.append(relative_position[:3])
+        except KeyError:
+            poses.append(np.full((3, 4), np.NaN))
+    poses = np.stack(poses)
+    np.savetxt(output_dir/'poses.txt', poses.reshape((len(images_list), -1)))
+    return poses
 
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
@@ -215,21 +221,20 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         video = False
 
     # Discard images and cameras that are not represented by the image list
-    images = {k: i for k, i in images.items() if i.name in images_list}
+    images = {i.name: i for k, i in images.items() if i.name in images_list}
     cameras_ids = set([i.camera_id for i in images.values()])
     cameras = {k: cameras[k] for k in cameras_ids}
 
     if downscale is None:
         assert width is not None
     save_intrinsics(cameras, images, dataset_output_dir, width, downscale)
-    save_positions(images, dataset_output_dir)
+    poses = save_poses(images, images_list, dataset_output_dir)
 
     depth_maps = []
     occ_maps = []
     interpolated = []
     imgs = []
-    cameras = []
-    not_registered = 0
+    registered = []
 
     for i in images_list:
         img_path = images_root_folder / i
@@ -242,6 +247,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
             depth_path += ".gz"
             occ_path += ".gz"
         if depth_path.isfile():
+            registered.append(True)
             if occ_path.isfile():
                 occ_maps.append(occ_path)
             else:
@@ -256,12 +262,16 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         else:
             if verbose > 2:
                 print("Image {} was not registered".format(fname))
-            not_registered += 1
+            registered.append(False)
             depth_maps.append(None)
             occ_maps.append(None)
             interpolated.append(False)
-    print('{}/{} Frames not registered ({:.2f}%)'.format(not_registered, len(images_list), 100*not_registered/len(images_list)))
-    print('{}/{} Frames interpolated ({:.2f}%)'.format(sum(interpolated), len(images_list), 100*sum(interpolated)/len(images_list)))
+    print('{}/{} Frames not registered ({:.2f}%)'.format(len(images_list) - sum(registered),
+                                                         len(images_list),
+                                                         100*(1 - sum(registered)/len(images_list))))
+    print('{}/{} Frames interpolated ({:.2f}%)'.format(sum(interpolated),
+                                                       len(images_list),
+                                                       100*sum(interpolated)/len(images_list)))
     if threads == 1:
         for i, d, o, n in tqdm(zip(imgs, depth_maps, occ_maps, interpolated), total=len(imgs)):
             process_one_frame(i, d, o, dataset_output_dir, video_output_dir, downscale, n, visualization, viz_width=1920)
@@ -277,6 +287,38 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
             except KeyboardInterrupt as e:
                 tasks.cancel()
                 raise e
+
+    if metadata is not None:
+        wanted_keys = ['image_path', 'time', 'height', 'width', 'camera_model', 'camera_id']
+        filtered_metadata = metadata[wanted_keys].copy()
+        filtered_metadata['interpolated'] = interpolated
+        filtered_metadata['registered'] = registered
+        for i, j in product(range(3), range(4)):
+            filtered_metadata['pose{}{}'.format(i, j)] = poses[:, i, j]
+
+        filtered_metadata["fx"] = np.NaN
+        filtered_metadata["fy"] = np.NaN
+        filtered_metadata["cx"] = np.NaN
+        filtered_metadata["cy"] = np.NaN
+        for cam_id in filtered_metadata["camera_id"].unique():
+            if cam_id not in cameras.keys():
+                continue
+            cam = cameras[cam_id]
+            rows = filtered_metadata["camera_id"] == cam_id
+            filtered_metadata.loc[rows, "fx"] = cam.params[0]
+            if "SIMPLE" in cam.model or "RADIAL" in cam.model:
+                filtered_metadata.loc[rows, "fy"] = cam.params[0]
+                filtered_metadata.loc[rows, "cx"] = cam.params[1]
+                filtered_metadata.loc[rows, "cy"] = cam.params[2]
+            else:
+                filtered_metadata.loc[rows, "fy"] = cam.params[1]
+                filtered_metadata.loc[rows, "cx"] = cam.params[2]
+                filtered_metadata.loc[rows, "cy"] = cam.params[3]
+        filtered_metadata.to_csv(dataset_output_dir / 'metadata.csv')
+
+    not_registered = [i + '\n' for i, r in zip(images_list, registered) if not r]
+    with open(dataset_output_dir / 'not_registered.txt', 'w') as f:
+        f.writelines(not_registered)
 
     if video:
         video_path = str(video_output_dir.parent/'{}_groundtruth_viz.mp4'.format(video_output_dir.stem))

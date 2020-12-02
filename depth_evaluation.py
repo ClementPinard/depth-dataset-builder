@@ -2,7 +2,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
 import numpy as np
 import pandas as pd
-import matplotlib.pytplot as plt
+import matplotlib.pyplot as plt
 
 parser = ArgumentParser(description='Convert EuroC dataset to COLMAP',
                         formatter_class=ArgumentDefaultsHelpFormatter)
@@ -10,7 +10,7 @@ parser = ArgumentParser(description='Convert EuroC dataset to COLMAP',
 parser.add_argument('--dataset_root', metavar='DIR', type=Path)
 parser.add_argument('--est_depth', metavar='DIR', type=Path,
                     help='where the depth maps are stored, must be a 3D npy file')
-parser.add_argument('--evaluation_list', metavara='PATH', type=Path,
+parser.add_argument('--evaluation_list', metavar='PATH', type=Path,
                     help='File with list of images to test for depth evaluation')
 parser.add_argument('--flight_path_vector_list', metavar='PATH', type=Path,
                     help='File with list of speed vectors, used to compute error wrt direction')
@@ -140,3 +140,7 @@ def main():
     print("Results for usual metrics")
     print("{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(*error_names))
     print("{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(*errors))
+
+
+if __name__ == '__main__':
+    main()

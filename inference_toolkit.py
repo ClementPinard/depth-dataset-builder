@@ -2,6 +2,7 @@ import numpy as np
 from path import Path
 from imageio import imread
 import time
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 
 class Timer:
@@ -32,15 +33,15 @@ class Timer:
 
 
 class inferenceFramework(object):
-    def __init__(self, root, test_files, seq_length=3, min_depth=1e-3, max_depth=80, max_shift=50):
-        self.root = root
+    def __init__(self, root, test_files, min_depth=1e-3, max_depth=80, max_shift=50, frame_transform=None):
+        self.root = Path(root)
         self.test_files = test_files
         self.min_depth, self.max_depth = min_depth, max_depth
         self.max_shift = max_shift
 
     def __getitem__(self, i):
         timer = Timer()
-        sample = inferenceSample(self.root, self.test_files[i], timer, self.max_shift)
+        sample = inferenceSample(self.root, self.test_files[i], timer, self.max_shift, self.frame_transform)
         sample.timer.start()
         return sample
 
@@ -88,7 +89,7 @@ class inferenceSample(object):
         if self.frame_transform is not None:
             img = self.frame_transform(img)
         self.timer.start()
-        return img, self.intrinsics[shift]
+        return img, self.intrinsics[shift], self.poses[shift]
 
     def get_previous_frame(self, shift=1, displacement=None, max_rot=1):
         self.timer.stop()
@@ -103,3 +104,41 @@ class inferenceSample(object):
         final_shift = np.where(rot_valid[-1 - shift:])[-1]
         self.timer.start()
         return *self.get_frame(final_shift), self.poses[final_shift]
+
+
+def inference_toolkit_example():
+    parser = ArgumentParser(description='Example usage of Inference toolkit',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('--dataset_root', metavar='DIR', type=Path)
+    parser.add_argument('--depth_output', metavar='DIR', type=Path,
+                        help='where to store the estimated depth maps, must be a npy file')
+    parser.add_argument('--evaluation_list_path', metavar='PATH', type=Path,
+                        help='File with list of images to test for depth evaluation')
+    parser.add_argument('--scale-invariant', action='store_true',
+                        help='If selected, will rescale depth map with ratio of medians')
+    args = parser.parse_args()
+
+    with open(args.evaluation_list_path) as f:
+        evaluation_list = [line[:-1] for line in f.readlines()]
+
+    def my_model(frame, previous, pose):
+        # Mock up function that uses two frames and translation magnitude
+        return np.linalg.norm(pose[:, -1]) * np.linalg.norm(frame - previous, axis=-1)
+
+    engine = inferenceFramework(args.root, evaluation_list, lambda x: x.transpose(2, 0, 1).astype(np.float32)[None]/255)
+    esimated_depth_maps = {}
+    mean_time = []
+    for sample, image_path in zip(engine, evaluation_list):
+        latest_frame, latest_intrinsics, _ = sample.get_frame()
+        previous_frame, previous_intrinsics, previous_pose = sample.get_previous_frame(displacement=0.3)
+        esimated_depth_maps[image_path] = (my_model(latest_frame, previous_frame))
+        time_spent = engine.finish_frame(sample)
+        mean_time.append(time_spent)
+
+    print("Mean time per sample : {:.2f}us".format(1e6 * sum(mean_time)/len(mean_time)))
+    np.savez(args.depth_output, **esimated_depth_maps)
+
+
+if __name__ == '__main__':
+    inference_toolkit_example()
