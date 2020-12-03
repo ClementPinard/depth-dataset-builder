@@ -15,43 +15,61 @@ import yaml
 from itertools import product
 
 
-def save_intrinsics(cameras, images, output_dir, output_width=None, downscale=None):
-    def construct_intrinsics(cam, downscale):
-        # assert('PINHOLE' in cam.model)
-        if 'SIMPLE' in cam.model or 'RADIAL' in cam.model:
-            fx, cx, cy, *_ = cam.params
-            fy = fx
-        else:
-            fx, fy, cx, cy, *_ = cam.params
-
-        return np.array([[fx / downscale, 0, cx / downscale],
-                         [0, fy / downscale, cy / downscale],
-                         [0, 0, 1]])
-
-    def save_cam(cam, intrinsics_path, yaml_path):
+def rescale_and_save_cameras(cameras, images, output_dir, output_width=None, downscale=None):
+    def rescale_camera(cam):
         if downscale is None:
             current_downscale = output_width / cam.width
         else:
             current_downscale = downscale
-        intrinsics = construct_intrinsics(cam, current_downscale)
+        if 'SIMPLE' in cam.model or 'RADIAL' in cam.model:
+            cam.params[:3] /= current_downscale
+        else:
+            cam.params[:4] /= current_downscale
+
+        return cam._replace(width=int(cam.width//current_downscale),
+                            height=int(cam.height//current_downscale))
+
+    def construct_intrinsics(cam):
+        # assert('PINHOLE' in cam.model)
+        if 'SIMPLE' in cam.model or 'RADIAL' in cam.model:
+            fx, cx, cy = cam.params
+            fy = fx
+        else:
+            fx, fy, cx, cy, *_ = cam.params
+
+        return np.array([[fx, 0, cx],
+                         [0, fy, cy],
+                         [0, 0, 1]])
+
+    def save_cam(cam, intrinsics_path, yaml_path):
+        intrinsics = construct_intrinsics(cam)
         np.savetxt(intrinsics_path, intrinsics)
         with open(yaml_path, 'w') as f:
             camera_dict = {"model": cam.model,
                            "params": cam.params.tolist(),
-                           "width": cam.width / current_downscale,
-                           "height": cam.height / current_downscale}
+                           "width": cam.width,
+                           "height": cam.height}
             yaml.dump(camera_dict, f, default_flow_style=False)
+        return cam
 
+    rescaled_cameras = {}
     if len(cameras) == 1:
-        cam = cameras[list(cameras.keys())[0]]
+        key = list(cameras.keys())[0]
+        cam = cameras[key]
+        rescaled_cameras[key] = rescale_camera(cam)
         save_cam(cam, output_dir / "intrinsics.txt", output_dir / "camera.yaml")
 
     else:
         for _, img in images.items():
-            cam = cameras[img.camera_id]
-
-            save_cam(cam, output_dir / Path(img.name).stem + "_intrinsics.txt",
-                     output_dir / Path(img.name).stem + "_camera.yaml")
+            try:
+                cam = rescaled_cameras[img.camera_id]
+            except KeyError:
+                cam = rescale_camera(cameras[img.camera_id])
+                rescaled_cameras[img.camera_id] = cam
+            finally:
+                save_cam(cam, output_dir / Path(img.name).stem + "_intrinsics.txt",
+                         output_dir / Path(img.name).stem + "_camera.yaml")
+    return rescaled_cameras
 
 
 def to_transform_matrix(q, t):
@@ -227,7 +245,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
 
     if downscale is None:
         assert width is not None
-    save_intrinsics(cameras, images, dataset_output_dir, width, downscale)
+    rescaled_cameras = rescale_and_save_cameras(cameras, images, dataset_output_dir, width, downscale)
     poses = save_poses(images, images_list, dataset_output_dir)
 
     depth_maps = []
@@ -301,10 +319,11 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         filtered_metadata["cx"] = np.NaN
         filtered_metadata["cy"] = np.NaN
         for cam_id in filtered_metadata["camera_id"].unique():
-            if cam_id not in cameras.keys():
+            if cam_id not in rescaled_cameras.keys():
                 continue
-            cam = cameras[cam_id]
+            cam = rescaled_cameras[cam_id]
             rows = filtered_metadata["camera_id"] == cam_id
+
             filtered_metadata.loc[rows, "fx"] = cam.params[0]
             if "SIMPLE" in cam.model or "RADIAL" in cam.model:
                 filtered_metadata.loc[rows, "fy"] = cam.params[0]
