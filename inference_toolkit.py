@@ -3,6 +3,8 @@ from path import Path
 from imageio import imread
 import time
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from scipy.spatial.transform import Rotation
+from tqdm import tqdm
 
 
 class Timer:
@@ -38,10 +40,11 @@ class inferenceFramework(object):
         self.test_files = test_files
         self.min_depth, self.max_depth = min_depth, max_depth
         self.max_shift = max_shift
+        self.frame_transform = frame_transform
 
     def __getitem__(self, i):
         timer = Timer()
-        sample = inferenceSample(self.root, self.test_files[i], timer, self.max_shift, self.frame_transform)
+        sample = inferenceSample(self.root, self.test_files[i], self.max_shift, timer, self.frame_transform)
         sample.timer.start()
         return sample
 
@@ -58,23 +61,22 @@ class inferenceSample(object):
         self.root = root
         self.file = file
         self.frame_transform = frame_transform
+        self.timer = timer
         full_filepath = self.root / file
         scene = full_filepath.parent
-        scene_files = sorted(scene.files("*jpg"))
+        scene_files = sorted(scene.files("*.jpg"))
         poses = np.genfromtxt(scene / "poses.txt").reshape((-1, 3, 4))
         sample_id = scene_files.index(full_filepath)
         assert(sample_id > max_shift)
         start_id = sample_id - max_shift
         self.valid_frames = scene_files[start_id:sample_id + 1][::-1]
-        valid_poses = poses[start_id:sample_id + 1].flipud()
-        valid_poses_full = np.concatenate([valid_poses, np.array([0, 0, 0, 1]).reshape(1, 4, 1)])
+        valid_poses = np.flipud(poses[start_id:sample_id + 1])
+        last_line = np.broadcast_to(np.array([0, 0, 0, 1]), (valid_poses.shape[0], 1, 4))
+        valid_poses_full = np.concatenate([valid_poses, last_line], axis=1)
         self.poses = (np.linalg.inv(valid_poses_full[0]) @  valid_poses_full)[:, :3]
         R = self.poses[:, :3, :3]
-        s = np.linalg.norm(np.stack([R[:, 0, 1]-R[:, 1, 0],
-                                     R[:, 1, 2]-R[:, 2, 1],
-                                     R[:, 0, 2]-R[:, 2, 0]]), axis=1)
-        self.rotation_angles = np.abs(np.arcsin(0.5 * s))
-        self.displacements = np.linalg.norm(self.poses[:, :, 4])
+        self.rotation_angles = Rotation.from_matrix(R).magnitude()
+        self.displacements = np.linalg.norm(self.poses[:, :, -1])
 
         if (scene / "intrinsics.txt").isfile():
             self.intrinsics = np.stack([np.genfromtxt(scene / "intrinsics.txt")]*max_shift)
@@ -95,15 +97,13 @@ class inferenceSample(object):
         self.timer.stop()
 
         if displacement is not None:
-            shift = (self.poses[:, :, -1] - displacement).argmin()
-
+            shift = max(1, (self.displacements - displacement).argmin())
         rot_valid = self.rotation_angles < max_rot
-        assert sum(rot_valid[1:shift] > 0), "Rotation is alaways higher than {}".format(max_rot)
+        assert sum(rot_valid[1:shift+1] > 0), "Rotation is alaways higher than {}".format(max_rot)
         # Highest shift that has rotation below max_rot thresold
-
-        final_shift = np.where(rot_valid[-1 - shift:])[-1]
+        final_shift = np.where(rot_valid[-1 - shift:])[0][-1]
         self.timer.start()
-        return *self.get_frame(final_shift), self.poses[final_shift]
+        return self.get_frame(final_shift)
 
 
 def inference_toolkit_example():
@@ -111,7 +111,7 @@ def inference_toolkit_example():
                             formatter_class=ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--dataset_root', metavar='DIR', type=Path)
-    parser.add_argument('--depth_output', metavar='DIR', type=Path,
+    parser.add_argument('--depth_output', metavar='FILE', type=Path,
                         help='where to store the estimated depth maps, must be a npy file')
     parser.add_argument('--evaluation_list_path', metavar='PATH', type=Path,
                         help='File with list of images to test for depth evaluation')
@@ -124,15 +124,16 @@ def inference_toolkit_example():
 
     def my_model(frame, previous, pose):
         # Mock up function that uses two frames and translation magnitude
-        return np.linalg.norm(pose[:, -1]) * np.linalg.norm(frame - previous, axis=-1)
+        # return np.linalg.norm(pose[:, -1]) * np.linalg.norm(frame - previous, axis=-1)
+        return np.exp(np.random.randn(frame.shape[0], frame.shape[1]))
 
-    engine = inferenceFramework(args.root, evaluation_list, lambda x: x.transpose(2, 0, 1).astype(np.float32)[None]/255)
+    engine = inferenceFramework(args.dataset_root, evaluation_list, lambda x: x.transpose(2, 0, 1).astype(np.float32)[None]/255)
     esimated_depth_maps = {}
     mean_time = []
-    for sample, image_path in zip(engine, evaluation_list):
+    for sample, image_path in zip(engine, tqdm(evaluation_list)):
         latest_frame, latest_intrinsics, _ = sample.get_frame()
         previous_frame, previous_intrinsics, previous_pose = sample.get_previous_frame(displacement=0.3)
-        esimated_depth_maps[image_path] = (my_model(latest_frame, previous_frame))
+        esimated_depth_maps[image_path] = (my_model(latest_frame, previous_frame, previous_pose))
         time_spent = engine.finish_frame(sample)
         mean_time.append(time_spent)
 

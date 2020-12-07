@@ -13,6 +13,7 @@ import gzip
 from pebble import ProcessPool
 import yaml
 from itertools import product
+import pandas as pd
 
 
 def rescale_and_save_cameras(cameras, images, output_dir, output_width=None, downscale=None):
@@ -91,6 +92,7 @@ def save_poses(images, images_list, output_dir):
             relative_position = np.linalg.inv(starting_pos) @ current_pos
             poses.append(relative_position[:3])
         except KeyError:
+            # Frame is not registered so we put NaN coordinates instead
             poses.append(np.full((3, 4), np.NaN))
     poses = np.stack(poses)
     np.savetxt(output_dir/'poses.txt', poses.reshape((len(images_list), -1)))
@@ -225,7 +227,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     video_output_dir.makedirs_p()
     if video:
         visualization = True
-    cameras, images, _ = rm.read_model(final_model, '.txt')
+    cameras_colmap, images_colmap, _ = rm.read_model(final_model, '.txt')
     # image_df = pd.DataFrame.from_dict(images, orient="index").set_index("id")
 
     if metadata is not None:
@@ -239,14 +241,17 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         video = False
 
     # Discard images and cameras that are not represented by the image list
-    images = {i.name: i for k, i in images.items() if i.name in images_list}
-    cameras_ids = set([i.camera_id for i in images.values()])
-    cameras = {k: cameras[k] for k in cameras_ids}
+    images_colmap = {i.name: i for k, i in images_colmap.items() if i.name in images_list}
+    cameras_ids = set([i.camera_id for i in images_colmap.values()])
+    cameras_colmap = {k: cameras_colmap[k] for k in cameras_ids}
 
     if downscale is None:
         assert width is not None
-    rescaled_cameras = rescale_and_save_cameras(cameras, images, dataset_output_dir, width, downscale)
-    poses = save_poses(images, images_list, dataset_output_dir)
+    rescaled_cameras = rescale_and_save_cameras(cameras_colmap,
+                                                images_colmap,
+                                                dataset_output_dir,
+                                                width, downscale)
+    poses = save_poses(images_colmap, images_list, dataset_output_dir)
 
     depth_maps = []
     occ_maps = []
@@ -264,7 +269,8 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
         if compressed:
             depth_path += ".gz"
             occ_path += ".gz"
-        if depth_path.isfile():
+        if i in images_colmap:
+            assert depth_path.isfile()
             registered.append(True)
             if occ_path.isfile():
                 occ_maps.append(occ_path)
@@ -349,6 +355,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
+    env["metadata"] = pd.read_csv(env["metadata_path"])
     if args.interpolated_frames_path is None:
         env["interpolated_frames"] = []
     else:

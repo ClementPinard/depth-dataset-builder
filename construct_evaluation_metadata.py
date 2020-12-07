@@ -65,6 +65,7 @@ def main():
 
             valid_frames = s.iloc[args.min_shift:]
             valid_frames = valid_frames[~valid_frames["interpolated"]]
+            valid_frames["image_path"] = [args.dataset_dir.relpathto(v) / Path(f).basename() for f in valid_frames["image_path"].values]
 
             total_valid_frames.append(valid_frames)
     total_valid_frames_df = pd.concat(total_valid_frames)
