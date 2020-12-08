@@ -165,7 +165,7 @@ def process_one_frame(img_path, depth_path, occ_path,
     if depth_path is not None:
         with gzip.open(depth_path, "rb") if compressed else open(depth_path, "rb") as f:
             depth = np.frombuffer(f.read(), np.float32).reshape(h, w)
-        output_depth_name = dataset_output_dir / img_path.basename() + '.npy'
+        output_depth_name = dataset_output_dir / img_path.stem + '.npy'
         downscaled_depth, viz = apply_cmap_and_resize(depth, 'rainbow', downscale)
         if not interpolated:
             np.save(output_depth_name, downscaled_depth)
