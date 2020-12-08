@@ -3,9 +3,10 @@ from path import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
 
-parser = ArgumentParser(description='Convert EuroC dataset to COLMAP',
+parser = ArgumentParser(description='Evaluate depth maps with respect to ground truth depth and FPV position',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('--dataset_root', metavar='DIR', type=Path)
@@ -21,16 +22,23 @@ parser.add_argument('--scale-invariant', action='store_true',
 coords = None
 
 
-def get_values(gt_depth, estim_depth, fpv, min_depth=1e-2, max_depth=250):
+def get_values(gt_depth, estim_depth, fpv, scale_invariant=False, mask=None, min_depth=1e-2, max_depth=250):
     global coords
     if coords is None:
         coords = np.stack(np.meshgrid(np.arange(gt_depth.shape[1]), np.arange(gt_depth.shape[0])), axis=-1)
     fpv_dist = np.linalg.norm(coords - fpv, axis=-1)
     estim_depth = np.clip(estim_depth, min_depth, max_depth)
     valid = (gt_depth > min_depth) & (gt_depth < max_depth)
+    if mask is not None:
+        valid = valid & mask
+    if valid.sum() == 0:
+        return
+    valid_gt, valid_estim = gt_depth[valid], estim_depth[valid]
+    if scale_invariant:
+        valid_estim = valid_estim * np.median(valid_gt) / np.median(valid_estim)
     fpv_dist = fpv_dist[valid]
     valid_coords = coords[valid]
-    values = np.stack([gt_depth[valid], estim_depth[valid], *valid_coords.T, fpv_dist], axis=-1)
+    values = np.stack([valid_gt, valid_estim, *valid_coords.T, fpv_dist], axis=-1)
 
     return pd.DataFrame(values, columns=["GT", "estim", "x", "y", "fpv_dist"])
 
@@ -70,10 +78,11 @@ def main():
     estimated_depth = np.load(args.est_depth, allow_pickle=True)
     values_df = []
     assert(len(depth_paths) == len(estimated_depth))
-    for filepath, fpv in zip(depth_paths, tqdm(fpv_list)):
+    for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
         GT = np.load(args.dataset_root/filepath + '.npy')
         new_values = get_values(GT, estimated_depth[filepath], fpv)
-        values_df.append(new_values)
+        if new_values is not None:
+            values_df.append(new_values)
 
     values_df = pd.concat(values_df)
     values_df["log_GT"] = np.log(values_df["GT"])
@@ -156,31 +165,43 @@ def main():
         index = quantiles_per_fpv.index
         diff_per_fpv = quantiles_per_fpv["absdiff"]
         logdiff_per_fpv = quantiles_per_fpv["abslogdiff"]
-        axes[0].fill_between(index, diff_per_fpv[0.25], diff_per_fpv[0.75], color="cyan")
-        axes[0].plot(diff_per_fpv[0.5].index, diff_per_fpv[0.5])
+        axes[0].fill_between(index, diff_per_fpv[0.25], diff_per_fpv[0.75], color="cyan", label="25% - 75%")
+        axes[0].plot(diff_per_fpv[0.5].index, diff_per_fpv[0.5], label="median")
         axes[0].set_title("Error wrt to distance to fpv (in px)")
-        axes[1].fill_between(index, logdiff_per_fpv[0.25], logdiff_per_fpv[0.75], color="cyan")
-        axes[1].plot(logdiff_per_fpv[0.5])
+        axes[1].fill_between(index, logdiff_per_fpv[0.25], logdiff_per_fpv[0.75], color="cyan", label="25% - 75%")
+        axes[1].plot(logdiff_per_fpv[0.5], label="median")
         axes[1].set_title("Log error wrt to distance to fpv (in px)")
+        axes[1].set_xlabel("Distance to flight path vector (in px)")
 
         plt.tight_layout()
         fig, axes = plt.subplots(2, 1, sharex=True)
         index = quantiles_per_gt.index
         diff_per_gt = quantiles_per_gt["absdiff"]
         logdiff_per_gt = quantiles_per_gt["abslogdiff"]
-        axes[0].fill_between(index, diff_per_gt[0.25], diff_per_gt[0.75], color="cyan")
-        axes[0].plot(diff_per_gt[0.5])
+        axes[0].fill_between(index, diff_per_gt[0.25], diff_per_gt[0.75], color="cyan", label="25% - 75%")
+        axes[0].plot(diff_per_gt[0.5], label="median")
         axes[0].set_title("Error wrt to distance to groundtruth depth")
-        axes[1].fill_between(index, logdiff_per_gt[0.25], logdiff_per_gt[0.75], color="cyan")
-        axes[1].plot(logdiff_per_gt[0.5])
+        axes[1].fill_between(index, logdiff_per_gt[0.25], logdiff_per_gt[0.75], color="cyan", label="25% - 75%")
+        axes[1].plot(logdiff_per_gt[0.5], label="median")
         axes[1].set_title("Log error wrt to groundtruth depth")
+        axes[1].set_xlabel("Groundtruth depth (in meters)")
 
         plt.tight_layout()
         fig, axes = plt.subplots(2, 1)
-        axes[0].imshow(mean_diff_per_px.T)
+        pl = axes[0].imshow(mean_diff_per_px.T)
         axes[0].set_title("Mean error for each pixel")
-        axes[1].imshow(mean_log_diff_per_px.T)
+        divider = make_axes_locatable(axes[0])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = fig.colorbar(pl, cax=cax)
+        cbar.ax.tick_params(axis='y', direction='in')
+        cbar.set_label('# Mean abs diff', rotation=270)
+        pl = axes[1].imshow(mean_log_diff_per_px.T)
         axes[1].set_title("Mean Log error for each pixel")
+        divider = make_axes_locatable(axes[1])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = fig.colorbar(pl, cax=cax)
+        cbar.ax.tick_params(axis='y', direction='in')
+        cbar.set_label('# Mean abs log diff', rotation=270)
         plt.tight_layout()
         plt.show()
 

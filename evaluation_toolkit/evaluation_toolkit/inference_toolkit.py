@@ -44,19 +44,31 @@ class inferenceFramework(object):
         self.min_depth, self.max_depth = min_depth, max_depth
         self.max_shift = max_shift
         self.frame_transform = frame_transform
+        self.inference_time = []
+        self.estimated_depth_maps = {}
 
     def __getitem__(self, i):
         timer = Timer()
-        sample = inferenceSample(self.root, self.test_files[i], self.max_shift, timer, self.frame_transform)
-        sample.timer.start()
-        return sample
+        self.i = i
+        self.current_sample = inferenceSample(self.root, self.test_files[i], self.max_shift, timer, self.frame_transform)
+        self.current_sample.timer.start()
+        return self.current_sample
 
-    def finish_frame(self, sample):
-        sample.timer.stop()
-        return sample.timer.get_elapsed()
+    def finish_frame(self, estimated_depth):
+        self.current_sample.timer.stop()
+        elapsed = self.current_sample.timer.get_elapsed()
+        self.inference_time.append(elapsed)
+        self.estimated_depth_maps[self.current_sample.file] = estimated_depth
+        return elapsed
+
+    def finalize(self, output_path=None):
+        if output_path is not None:
+            np.savez(output_path, **self.estimated_depth_maps)
+        mean_inference_time = np.mean(self.inference_time)
+        return mean_inference_time, self.estimated_depth_maps
 
     def __len__(self):
-        return len(self.img_files)
+        return len(self.test_files)
 
 
 class inferenceSample(object):
@@ -148,17 +160,13 @@ def inference_toolkit_example():
         # return np.exp(np.random.randn(frame.shape[0], frame.shape[1]))
 
     engine = inferenceFramework(args.dataset_root, evaluation_list, lambda x: x.transpose(2, 0, 1).astype(np.float32)[None]/255)
-    estimated_depth_maps = {}
-    mean_time = []
-    for sample, image_path in zip(engine, tqdm(evaluation_list)):
+    for sample in tqdm(engine):
         latest_frame, latest_intrinsics, _ = sample.get_frame()
         previous_frame, previous_intrinsics, previous_pose = sample.get_previous_frame(displacement=0.3)
-        estimated_depth_maps[image_path] = (my_model(latest_frame, previous_frame, previous_pose))
-        time_spent = engine.finish_frame(sample)
-        mean_time.append(time_spent)
+        engine.finish_frame(my_model(latest_frame, previous_frame, previous_pose))
 
-    print("Mean time per sample : {:.2f}us".format(1e6 * sum(mean_time)/len(mean_time)))
-    np.savez(args.depth_output, **estimated_depth_maps)
+    mean_time, _ = engine.finalize(args.depth_output)
+    print("Mean time per sample : {:.2f}us".format(1e6 * mean_time))
 
 
 if __name__ == '__main__':
