@@ -10,7 +10,9 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 * [How it works](#how-it-works)
 * [Step by step guide](#usage)
 * [Special case : adding new images to an existing constructed dataset](#special-case-adding-new-images-to-an-existing-dataset)
+* [Using the constructed dataset for evaluation](#evaluation)
 * [Detailed method with the manoir example](#detailed-method-with-the-manoir-example)
+* [TODO](#todo)
 
 
 ## Software Dependencies
@@ -733,6 +735,26 @@ This will essentially do the same thing as the script, in order to let you chang
     --threads 8
     ```
 
+    This will create a dataset at the folder `/path/to/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file.
+
+16. Evaluation list creation
+
+    Once everything is constructed, you can specify a subset of e.g. 500 frames for evaluaton.
+
+    ```
+    python construct_evaluation_metadata.py \
+    --dataset_dir /path/to/dataset/ \
+    --split 0.9 \
+    --seed 0 \
+    --min_shift 50 \
+    --allow_interpolated_frames
+    ```
+
+    this will select 500 frames (at most) such that 90% (`--split 0.9`) of folders are kept as training folders, and every frame has at least 50 frames with valid odometry before (`--min_shift 50`). Interpolated frames are allowed for odometry to be considered valid (but not for depth ground truth) (`--allow_interpolated_frames`)
+
+    It will create a txt file with test file paths (`/path/to/dataset/test_files.txt`), a txt file with train folders (`/path/to/dataset/train_folders.txt`) and lastly a txt file with flight path vector coordinates (in pixels) (`/path/to/dataset/fpv.txt`)
+
+
 ### Special case : Adding new images to an existing dataset
 
 In case you already have constructed a dataset and you still have the workspace that used available, you can easily add new images to the dataset. See https://colmap.github.io/faq.html#register-localize-new-images-into-an-existing-reconstruction
@@ -835,3 +857,20 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
 ### Resulting video
 
 [![Alt text](https://img.youtube.com/vi/NLIvrzUB9bY/0.jpg)](https://www.youtube.com/watch?v=NLIvrzUB9bY&list=PLMeM2q87QjqjAAbg8RD3F_J5D7RaTMAJj)
+
+#Todo
+
+## Better point cloud registration
+
+- See `bundle_adjusment.py` : add chamfer loss to regular bundle adjustment, so that the reconstruction not only minimizes pixel reprojection but also distance to Lidar Point Cloud
+
+## Better filtering of models :
+
+- for now we can only interpolate everything or nothing, add a threshold time above which we don't consider the pose interpolation reliable anymore, even for odometry
+- (not sure if useful) add camera parmeters filtering and interpolation, could be used when smooth zoom is applied
+
+## Dataset homogeneization
+
+- Apply rectification on the whole dataset to only have pinhole cameras in the end
+- Resize all frames to have the exact same width, height, and intrinsics for particular algorithm that are trained on a specific set of intrinsics (see DepthNet)
+- Divide videos into sequential subparts so that each folder will contain subsequent frames with valid absolute pose and depth
