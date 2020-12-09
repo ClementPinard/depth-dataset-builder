@@ -16,10 +16,10 @@ for sample in tqdm(engine):
     previous_frame, previous_intrinsics, previous_pose = sample.get_previous_frame(displacement=0.3)
     estimated_depth_map = my_model(latest_frame, previous_frame, previous_pose)
     engine.finish_frame(estimated_depth_map)
-mean_inference_time, output_depth_maps = engine.finalize(output_file='output.npz')
+mean_inference_time, output_depth_maps = engine.finalize(output_path='output.npz')
 ```
 
-You can find an example usage of this Inference Framework for SfmLearner [here](https://github.com/ClementPinard/SfmLearner-Pytorch/tree/inference-framework)
+You can find an example usage of this Inference Framework for SfmLearner [here](https://github.com/ClementPinard/SfmLearner-Pytorch/tree/validation_set_constructor)
 
 ## Evaluation
 

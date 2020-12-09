@@ -12,12 +12,19 @@ parser = ArgumentParser(description='Evaluate depth maps with respect to ground 
 parser.add_argument('--dataset_root', metavar='DIR', type=Path)
 parser.add_argument('--est_depth', metavar='DIR', type=Path,
                     help='where the depth maps are stored, must be a 3D npy file')
-parser.add_argument('--evaluation_list_path', metavar='PATH', type=Path,
+parser.add_argument('--evaluation_list_path', '--eval', metavar='PATH', type=Path,
                     help='File with list of images to test for depth evaluation')
-parser.add_argument('--flight_path_vector_list', metavar='PATH', type=Path,
+parser.add_argument('--flight_path_vector_list', '--fpv', metavar='PATH', type=Path,
                     help='File with list of speed vectors, used to compute error wrt direction')
-parser.add_argument('--scale-invariant', action='store_true',
+parser.add_argument('--scale_invariant', action='store_true',
                     help='If selected, will rescale depth map with ratio of medians')
+parser.add_argument('--min_depth', metavar='D', default=1e-2, type=float,
+                    help='threshold below which GT is discarded')
+parser.add_argument('--max_depth', metavar='D', default=250, type=float,
+                    help='threshold above which GT is discarded')
+parser.add_argument('--depth_mask', metavar='PATH', default=None, type=Path,
+                    help='path to boolean numpy array. Should be the same size as ground truth. '
+                         'False value will discard the corresponding pixel location for every ground truth')
 
 coords = None
 
@@ -78,9 +85,15 @@ def main():
     estimated_depth = np.load(args.est_depth, allow_pickle=True)
     values_df = []
     assert(len(depth_paths) == len(estimated_depth))
+    if args.depth_mask is not None:
+        mask = np.load(args.depth_mask)
+    else:
+        mask = None
     for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
         GT = np.load(args.dataset_root/filepath + '.npy')
-        new_values = get_values(GT, estimated_depth[filepath], fpv)
+        new_values = get_values(GT, estimated_depth[filepath], fpv,
+                                args.scale_invariant, mask,
+                                args.min_depth, args.max_depth)
         if new_values is not None:
             values_df.append(new_values)
 
@@ -89,20 +102,20 @@ def main():
     values_df["log_estim"] = np.log(values_df["estim"])
     values_df["diff"] = values_df["estim"] - values_df["GT"]
     values_df["absdiff"] = values_df["diff"].abs()
-    values_df["reldiff"] = values_df["diff"] / values_df["GT"]
+    values_df["reldiff"] = values_df["absdiff"] / values_df["GT"]
     values_df["logdiff"] = values_df["log_estim"] - values_df["log_GT"]
     values_df["abslogdiff"] = values_df["logdiff"].abs()
 
     error_names = ["AbsDiff", "StdDiff", "AbsRel", "StdRel", "AbsLog", "StdLog", "a1", "a2", "a3"]
-    errors = [values_df["diff"].mean(),
+    errors = [values_df["absdiff"].mean(),
               np.sqrt(np.power(values_df["diff"], 2).mean()),
               values_df["reldiff"].mean(),
               np.sqrt(np.power(values_df["reldiff"], 2).mean()),
-              values_df["logdiff"].abs().mean(),
+              values_df["abslogdiff"].mean(),
               np.sqrt(np.power(values_df["logdiff"], 2).mean()),
-              sum(values_df["logdiff"] < np.log(1.25)) / len(values_df),
-              sum(values_df["logdiff"] < 2 * np.log(1.25)) / len(values_df),
-              sum(values_df["logdiff"] < 3 * np.log(1.25)) / len(values_df)]
+              sum(values_df["abslogdiff"] < np.log(1.25)) / len(values_df),
+              sum(values_df["abslogdiff"] < 2 * np.log(1.25)) / len(values_df),
+              sum(values_df["abslogdiff"] < 3 * np.log(1.25)) / len(values_df)]
     print("Results for usual metrics")
     print("{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(*error_names))
     print("{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(*errors))
@@ -194,14 +207,12 @@ def main():
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cbar = fig.colorbar(pl, cax=cax)
         cbar.ax.tick_params(axis='y', direction='in')
-        cbar.set_label('# Mean abs diff', rotation=270)
         pl = axes[1].imshow(mean_log_diff_per_px.T)
         axes[1].set_title("Mean Log error for each pixel")
         divider = make_axes_locatable(axes[1])
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cbar = fig.colorbar(pl, cax=cax)
         cbar.ax.tick_params(axis='y', direction='in')
-        cbar.set_label('# Mean abs log diff', rotation=270)
         plt.tight_layout()
         plt.show()
 
