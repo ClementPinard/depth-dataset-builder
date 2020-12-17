@@ -141,6 +141,7 @@ def main():
         if not (env["georef_recon"]/"images.bin").isfile():
             # GPS alignment failed, possibly because not enough GPS referenced images
             # Copy the original model without alignment
+            print("Warning, model alignment failed, the model will be normalized, and thus the depth maps too")
             thorough_model.merge_tree(env["georef_recon"])
         env["georef_recon"].merge_tree(env["georef_full_recon"])
     if args.inspect_dataset:

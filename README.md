@@ -17,14 +17,20 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 
 ## Software Dependencies
 
+*Note*: There is a dockerfile in order to construct a docker image that automatically complies with all the software dependencies. You can just construct it with
+
+```
+docker build . -t my_image
+```
+
 These are the used tools, make sure to install them before running the scripts.
 
- - [CUDA](https://developer.nvidia.com/cuda-downloads)
- - [OpenCV](https://opencv.org/)
- - [ETH3D Dataset-pipeline](https://github.com/ETH3D/dataset-pipeline)
- - [Pytorch](https://pytorch.org/)
- - [COLMAP](https://colmap.github.io/)
- - [PDrAW from AnafiSDK](https://developer.parrot.com/docs/pdraw/)
+ - [CUDA](https://developer.nvidia.com/cuda-downloads) (version : 10+)
+ - [OpenCV](https://opencv.org/) (version, 4.0.0+)
+ - [ETH3D Dataset-pipeline](https://github.com/ETH3D/dataset-pipeline) (version : master)
+ - [Pytorch](https://pytorch.org/) (version, 1.7.0+)
+ - [COLMAP](https://colmap.github.io/) (version : master)
+ - [PDrAW from AnafiSDK](https://developer.parrot.com/docs/pdraw/) (version : master)
 
 Apart from CUDA, which you need to install by yourself, you can use the help script `install_dependencies.sh` to install them on ubuntu 20.04.
 
@@ -738,7 +744,7 @@ This will essentially do the same thing as the script, in order to let you chang
     This will create a dataset at the folder `/path/to/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file.
 
 16. Evaluation list creation
-
+    
     Once everything is constructed, you can specify a subset of e.g. 500 frames for evaluaton.
 
     ```

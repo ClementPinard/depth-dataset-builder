@@ -46,7 +46,8 @@ class Colmap(Wrapper):
     def map(self, output, input=None, multiple_models=True, start_frame_id=None):
         options = ["mapper", "--database_path", self.db,
                    "--image_path", self.image_path,
-                   "--output_path", output]
+                   "--output_path", output,
+                   "--Mapper.ba_refine_principal_point", "1"]
         if start_frame_id is not None:
             options += ["--Mapper.init_image_id1", str(start_frame_id)]
         if not multiple_models:

@@ -140,6 +140,12 @@ def register_new_cameras(metadata, device, fields, database, camera_dict):
         prior_focal_length = all(params[:num_focals] != 0)
         # For unknown focal_length, put a generic placeholder
         params[:num_focals][params[:num_focals] == 0] = w / 2
+        # If cx is not set, give the default value w/2
+        if params[num_focals] == 0:
+            params[num_focals] = w/2
+        # same for cy
+        if params[num_focals + 1] == 0:
+            params[num_focals + 1] = h/2
         # We can get less params than actual params if they are unknown. We then pad it with zeros
         db_id = database.add_camera(model_id, int(w), int(h), params, prior_focal_length=prior_focal_length)
         camera_ids.append(db_id)
@@ -213,8 +219,7 @@ def get_video_metadata(v, output_video_folder, system, generic_model='OPENCV', *
                                            width, height, framerate)
             metadata["camera_model"] = "PINHOLE"
             device = "anafi"
-        except Exception as e:
-            raise e
+        except Exception:
             # No metadata found, construct a simpler dataframe without location
             metadata = generic_metadata()
             device = "generic"
