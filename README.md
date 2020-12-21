@@ -66,7 +66,7 @@ See [Detailed method with the manoir example](#detailed-method-with-the-manoir-e
 3. Extract optimal frames from video for a thorough photogrammetry that will use a mix of pix4D flight plan pictures and video still frames.
     - The total number of frame must not be too high to prevent the reconstruction from lasting too long on a single desktop (we recommand between 500 an 1000 images)
     - At the same time, extract if possible information on camera parameters to identify which video sequences share the same parameters (e.g 4K videos vs 720p videos, or different levels of zooming)
-    - This step is done by the script `videos_to_colmap.py`
+    - This step is done by the script `videos_to_colmap.py` (Step 5)
 
 4. Georeference your images.
     - For each frame with *GPS* position, convert them in *XYZ* coorindates in the projection system used by the Lidar point cloud (Here, EPSG:2154 was used)
@@ -74,7 +74,7 @@ See [Detailed method with the manoir example](#detailed-method-with-the-manoir-e
     - Log image filename and centered *XYZ* position in a file for georegistration of the reconstruction point cloud
     - This step is also done by the script `videos_to_colmap.py`
 
-4. Generate sky maps of your drone pictures to help the photogrammetry filter out noise during matching
+4. Generate sky maps of your drone pictures to help the photogrammetry filter out noise during matching (Step 6)
     - Use a Neural Network to segment the drone picture and generate masks so that the black areas will be ignored
     - This is done with the script `generate_sky_masks.py`
 
@@ -116,21 +116,206 @@ See [Detailed method with the manoir example](#detailed-method-with-the-manoir-e
 
 ## Usage
 
-### Running the full script
+It is expected that you read the COLMAP tutorial in order to understand key COLMAP concepts and data structure : https://colmap.github.io/tutorial.html
 
+### Working directories
+
+You will be working with 3 different folders :
+ - Input directory : Where you store your acquired data : Lidar point clouds, photogrammetry pictures and videos
+ - Workspace : Data from input directory will be copied into this directory so that COLMAP can run several photogrammetry tasks
+ - Output folder: Where the processed data will be stored? This will be the biggest directory.
+
+#### Input directory
 
 Structure your input folder so that it looks like this:
+
 ```
+Input
 ├── Pictures
-│   ├── anafi
-│   │   ├── raw
-│   │   └── rectilinear
-│   └── apn
+│   ├── folder1
+│   │   ├── subfolder1
+│   │   │   ├── 01.jpg
+│   │   │   └── ...
+│   │   ├── subfolder2
+│   │   └── ..
+│   └── folder2
 ├── Videos
-│   ├── 4K30
-│   └── 720p120
+│   └── no_groundtruth
 └── Lidar
 ```
+
+- `Pictures` contains the photogrammetry pictures. They can be in jpeg or RAW format. The subfolder means a shared camera calibration. If two pictures are taken with the same camera but with different zoom levels, they need to be in separate folders.
+- `Videos` containes the videos you took which will be converted into frames and then used in the photogrammetry process.
+    * `no_groundtruth` contains the videos you want to use for the whole model reconstruction (the thorough photogrammetry step), but you don't want the whole video to be localized. Thus, no depth ground truth will be generated for these videos.
+    * Other videos will be used for photogrammetry AND for localization, and depth and odometry will be produced for every frame of the video.
+- `Lidar` contains the lidar models. They can be `LAS` files or `PLY` files. In the case your point clouds are geo-referenced, you need to know what projection system was used in order to compute picture position with respect to the clouds using GPS coordinates.
+
+#### Workspace directory
+
+Your workspace (which is different from the input folder !) will be used throughout your whole dataset creation pipeline. It should be stored on a SSD and is designed this way :
+
+```
+Workspace
+├── Lidar
+├── COLMAP img root
+│   ├──Indivudal pictures 
+│   │   ├── folder1
+│   │   ├── folder2
+│   │   └── ...
+│   └──Videos
+│       ├── resolution1
+│       │   ├── video1
+│       │   └── ...
+│       ├── resolution2
+│       └── ...
+├── Masks
+│   └── Same structure as 'COLMAP img root' folder
+├── Thorough
+│   ├── 0
+│   ├── 1
+│   ├── ...
+│   ├── georef
+│   ├── georef_full
+│   └── dense
+├── Video_reconstructions
+│   ├── Same structure as 'COLMAP img root/Videos' folder
+│   ├── resolution1
+│   │   └── video1
+│   │       ├── lowfps
+│   │       ├── chunk_0
+│   │       ├── chunk_1
+│   │       ├── ...
+│   │       └── final
+│   └── ...
+├── scan_thorough.db
+├── lidar.mlp
+└── aligned.mlp
+```
+
+- `Lidar` will store the point clouds converted and centered from LAS point clouds
+- `COLMAP img root` is the folder COLMAP will make its picture paths relative from. In every COLMAP command, it is always indicated with the option `--image_path`. Obviously, that is also where we store the pictures COLMAP will use. 
+    * `Individual pictures` contains the pictures that were not extracted from a video, e.g. from a photogrammetry flight plan. Subfolders can be used. You need to ensure that for pictures in the same sub folders share the exact same camera calibration : image size, focal length, distorsion.
+    * `Videos` containes pictures extracted from videos. In each video folder, in addition to the video frame, a `metadata.csv` file is stored in order to keep metadata, such as frame timestamp, image size, image calibration (if available, this is the case for Anafi videos), image position from GPS, and colmap database id. Note that we don't need to stores all the video frames in this folder at the same time. We only need a subset most of the time when mapping the whole reconstruction. When localizing the video frames, wall the frame sare in the directory, but you can remove them (apart from the subset) as soon as you are finished with localizing the video, and copy the frames in the output folder (see below)
+- `Masks` is a mirror of `COLMAP img root` and for each image, there is a black and white picture used discard parts of the images for feature points computation. See https://colmap.github.io/faq.html#mask-image-regions
+- `Thorough` is the output of the first photogrammetry, the one that will try to reconstruct the whole model with a subset of the images we acquired, which will then be used to localized remaining images, as well as localize the Lidar point cloud with respect to the images.
+    * `0`, ... , `N` are the folder containing sparse models reconstructed by COLMAP with the function `colmap mapper`. See https://colmap.github.io/tutorial.html#sparse-reconstruction
+    * `georef` is the folder containing the geo-referenced model. When GPS is available, we use it to have a first guess to register the reconstructed model with the Lidar point cloud. Note that this also apply the right scale to the model. See https://colmap.github.io/faq.html#geo-registration
+    * `georef_full` is the folder containing the geo-referenced model, augmented with additional frames from videos localization.
+    * `dense` is the folder containing the dense mode. See https://colmap.github.io/tutorial.html#dense-reconstruction
+- `Video_reconstructions` is the folder where we store the reconstruction for each video. It is based on the `georef` model. We then add a subset of the video frames (usually 1 fps) with the `colmap mapper`, augment the `georef_full`with it (see https://colmap.github.io/faq.html#merge-disconnected-models), and localize the rest of the frames. Note that once all frames are localized, you no longer use the reconstruction until ground truth creation, so you can store it in the output folder as soon as you are finished with your video
+    * `lowfps` contains the model with the subset of frames
+    * `chunk_0` to `chunk_N` contains the localized frames (but they do not contribute to the reconstruction). We cut the video in several chunks if the video is too long (and thus needs too much RAM)
+    * `final` contains a COLMAP model with only the frames of the very video we want to localize. Everything else than images localization (3D points, 2D feature points for each image, irrelevant camera models) is removed from the model.
+- `scan_thorough.db` is the database file used by COLMAP for the thorough reconstruction. Note that it can become quite big, that's why it does not contain feature for all the video frames but only a subset.
+- `lidar.mlp` is the MeshLabProject containing all the PLY files from Lidar scans. The meshlab project stores multiple PLY files and transformation information (in a 4x4 matrix) in a xml-like file.
+- `aligned.mlp` is the MeshLabProject after the Lidar point clouds (i.e. `lidar.mlp`) have beed registered with respect to the photogrammetry pointcloud. The transformations are the ones to apply to the PLY file in order to be aligned to the COLMAP output.
+
+#### Output directory
+
+You output directory is divided in 2 parts : 
+- Raw output directory, which will contain the full size images, with the depth maps generated by ETH3D
+- Converted output directory, which will contain the resized images, with depths stored in numpy files, along with videos for visualization purpose.
+
+
+```
+Raw_output_directory
+├── calibration
+├── ground_truth_depth
+│   ├── video1
+│   ├── video2
+│   └── ...
+├── COLMAP img root
+│   └── Same structure as 'Workspace/COLMAP img root' folder
+├── models
+│   └── Same structure as 'Workspace/Videos_reconstructions' folder
+├── occlusion_depth
+│   ├── video1
+│   ├── video2
+│   └── ...
+└── points
+```
+
+- `calibration` Byproduct of ETH3D `GroundTruthCreator` : where the colmap model used for the current video is stored. Overwritten for every video. All COLMAP models are already stored in the folder `models`.
+- `points` Another byproduct of ETH3D `GroundTruthCreator` : Lidar point cloud where points not seen by more than 2 images are discarded. Note that as in `calibration`, the file is overwritten for every video.
+- `ground_truth_depth` Folder where ETH3D `GroundTruthCreator` stored raw depth maps. Note that directory tree is not preserved, every video folder stem is stored in the root of the folder.
+- `occlusion_depth` Same as `ground_truth_depth` but for occlusion depth maps instead of depth maps. Note that outputing this occlusion depth is optional and only serves visualization purpose for the conveted dataset.
+- `COLMAP img root` is a clone of  `Workspace/COLMAP img root`. Contrary to the one in workspace, tt stores ALL the video frames so it can be very heavy.
+- `models` is a clone of `Workspace/Video_reconstructions`, it contains all the models that were used for video localization.
+
+```
+Converted_output_directory
+├── dataset
+│   ├── resolution1
+│   │   ├── video1
+│   │   │    ├── poses.txt
+│   │   │    ├── intrinsics.txt
+│   │   │    ├── camera.yaml
+│   │   │    ├── 0001.jpg
+│   │   │    ├── 0001_intrinsics.txt
+│   │   │    ├── 0001_camera.yaml
+│   │   │    ├── 0001.npy
+│   │   │    ├── 0002.jpg
+│   │   │    └── ...
+│   │   └── ...
+│   ├── resolution2
+│   ├── ...
+│   └── individual_pictures
+│       ├── folder1
+│       ├── folder2
+│       └── ...
+└── visualization
+    ├── resolution1
+    │   ├── video1.mp4
+    │   ├── video2.mp4
+    │   └── ...
+    ├── resolution2
+    ├── ...
+    └── individual_pictures
+        ├── folder1
+        │   ├── 0001.png
+        │   └── ...
+        ├── folder2
+        └── ...
+```
+
+
+- `dataset` contains the information that will be used for the actual evaluation. For every video, we have a folder containing :
+    * `poses.txt` for frames odometry. It is a list of lines of 12 float numbers, representing the 4x4 transformation matrix, the first matrix is always identity. This format is the same KITTI odometry. Non localized frames have a transformation matrix of `NaN` values.
+    * `interpolated.txt` is a list of all the fram paths that have an interpolated odometry. That way, depth are invalid, but odometry can be used to test depth algorithm that needs frame odometry.
+    * `not_registered.txt` is a list of all the fram paths that are not localized. They thus cannot be used for depth evaluation nor for odometry.
+    * `intrinsics.txt` *(only if all the frames share the same camera)* contains the intrinsics 3x3 matrix in a txt file (does not contains distortion parameters)
+    * `camera.yaml` *(only if all the frames share the same camera)* containes the camera parameters in COLMAP format, with distortions.
+    * For every video, we have a folder containing for every frame :
+        * `{name}.jpg`
+        * `{name}.npy`
+        * `{name}_intrinsics.txt` and `{name}_camera.yaml`: only if frames don't share the same camera, same `intrinsics.txt` and  `camera.yaml` above.
+    * Each folder stem in the idividual picture directry is treated as a video
+- `visualization` contains images for vizualisation. Each video has a correspondign mp4 file. Individual pictures have a corresponding image file.
+
+### How to read visualization
+
+![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/example_viz.jpg)
+
+Image is divided in 4 parts :
+
+```
+┌───┬───┐
+│ A │ B │
+├───┼───┤
+│ C │ D │
+└───┴───┘
+```
+
+ - `A` is raw image
+ - `B` is normalized depth map. It follows [OpenCV's Rainbow colormap](https://docs.opencv.org/master/d3/d50/group__imgproc__colormap.html#gga9a805d8262bcbe273f16be9ea2055a65af7f0add024009b0e43f8c83f3ca0b923). Note that OpenCV's rainbow is NOT the same as matplotlib's rainbow_gist.
+ - `C` is `A + B / 2`. It helps inspecting that depth and image are not shifted apart.
+ - `D` is normalized occlusion depth map. It follows Matplotlib's Bone colormap. See https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+
+Note that when frame is interpolated, a 5 pixels wide orange frame is visible at the edge of the picture.
+
+
+
+### Running the full script
 
 You can run the whole script with ```python main_pipeline.py```. If you don't have a lidar point cloud and want to use COLMAP reconstructed cloud as Groundtruth, you can use ```python main_pipeline_no_lidar.py``` which will be very similar, minus point cloud cleaning and registration steps.
 
@@ -205,13 +390,17 @@ This will essentially do the same thing as the script, in order to let you chang
 1. Point cloud preparation
 
     ```
-    python las2ply.py /path/to/cloud.las \
-    --output_folder /path/to/output_folder
+    python las2ply.py Input/Lidar/cloud.las \
+    --output_folder Workspace/Lidar
     ```
 
     This will save a ply file along with a centroid file
-     - `/path/to/output_folder/cloud.ply`
-     - `/path/to/output_folder/centroid.txt`
+     - `Workspace/Lidar/cloud.ply`
+     - `Workspace/Lidar/cloud_centroid.txt` This file will be used 
+
+    *Note on centroid* : Contrary to LAS files which are 64bit floats, PLY is used with 32bit foats, which cannot store large numbers with high values. The centroid is there to make every geo-referenced position (which can be as high as 20,000 km), be it from LAS file or from GPS coordinates centered around zero and thus usable in float32. This file will thus be used when extracting GPS metadata from pictures or videos and converting the values in `XYZ` coordinates relative to your point cloud.
+
+    Note that this also work for ply files, but most ply files are already centered around zero, so you can instead just copy the ply file and optionally write a centroid file with `0\n0\n0\n` inside.
 
 
 2. Point Cloud Cleaning
@@ -219,36 +408,42 @@ This will essentially do the same thing as the script, in order to let you chang
 
     ```
     ETHD3D/build/PointCloudCleaner \
-    --in /path/to/output_folder/cloud.ply \
+    --in Workspace/Lidar/cloud.ply \
     --filter 5,10
     ```
     (local outliers removal, doesn't necessarily remove isolated points)
     or
     ```
     pcl_util/build/CloudSOR \
-    --input/path/to/cloud_lidar.ply \
-    --output /path/to/cloud_lidar_filtered.ply \
+    --input Workspace/Lidar/cloud.ply \
+    --output Workspace/Lidar/cloud_filtered.ply \
     --knn 5 --std 6
     ```
 
 3. Meshlab Project creation
+    This step will construct a MeshLabProject file. It stores multiple PLY files and transformation information (in a 4x4 matrix) in the same file. During creation, every point cloud has identity for transformation.
     ```
     python meshlab_xml_writer.py create \
-    --input_models /path/to/cloud1 [../path/to/cloudN] \
-    --output_meshlab /path/to/lidar.mlp
+    --input_models Workspace/Lidar/cloud1_filtered.ply [.. Workspace/Lidar/cloudN_filtered.ply] \
+    --output_meshlab Workspace/lidar.mlp
     ```
 
     Optionally, if we have multiple lidar scans, we can run a registration step with ETH3D
 
+    This will run an ICP on the different ply models and store the resulting transformations in the `lidar.mlp` file.
+
     ```
     ETHD3D/build/ICPScanAligner \
-    -i /path/to/lidar.mlp \
-    -o /path/to/lidar.mlp
+    -i Workspace/lidar.mlp \
+    -o Workspace/lidar.mlp
     --number_of_scales 5
     ```
 
-4. First COLMAP step (divided in two parts) : feature extraction for photogrammetry frames
+4. First COLMAP step (divided in two parts) : feature extraction for photogrammetry frames.
 
+    This step can be skipped if there are only videos.
+
+    Generate sky masks in order to avoid using keypoints from clouds.
     ```
     python generate_sky_masks.py \
     --img_dir /path/to/images \
@@ -256,6 +451,10 @@ This will essentially do the same thing as the script, in order to let you chang
     --maskroot /path/to/images_mask \
     --batch_size 8
     ```
+
+    `--img_dir` is the path to photogrammetry pictures. They will be copied in the 
+
+    Run the feature extractor COLMAP command.
 
     ```
     colmap feature_extractor \
@@ -266,7 +465,12 @@ This will essentially do the same thing as the script, in order to let you chang
     --ImageReader.single_camera_per_folder 1 \
     ```
 
-    We don't explicitely need to extract features before having video frames, but this will populate the `/path/to/scan.db` file with the photogrammetry pictures and corresponding id that will be reserved for future version of the file. Besides, it automatically set a camera per folder too.
+
+     - `/path/to/scan.db` is the Database file that COLMAP will use throughout the whole photogrammetry process.
+     - `RADIAL` is the camera model. See https://colmap.github.io/cameras.html
+     - `single_camera_per_folder` makes COLMAP set every image in the same forlder to share the same camera parameters this will greatly improve the photogrammetry stability. This is only relevant if your pictures are indeed from the same camera parameters (including zoom).
+
+    We don't explicitely need to extract features before having video frames, but this will populate the `/path/to/scan.db` file with the photogrammetry pictures and corresponding id that will be reserved for future version of the file.
 
 5. Video frame addition to COLMAP db file
 
@@ -275,7 +479,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --video_folder /path/to/videos \
     --system epsg:2154 \
     --centroid_path /path/to/centroid.txt \
-    --colmap_img_root /path/to/images \
+    --colmap_img_root /path/to/colmap_images \
     --nw /path/to/anafi/native-wrapper.sh \
     --fps 1 \
     --total_frames 1000 \
@@ -283,12 +487,18 @@ This will essentially do the same thing as the script, in order to let you chang
     --thorough_db /path/to/scan.db
     ```
 
-    The video to colmap step will populate the scan db with new entries with the right camera parameters, and select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures.
-    It will also create several txt files with list of file paths :
-     - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry
-     - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file.
+     - `/path/to/videos` is the folder where you stored all your videos in MP4 files. For other video file formats, you can use the option `--vid_ext .avi` for e.g. also taking the `avi` files. The format must be readable by ffmpeg. See https://ffmpeg.org/ffmpeg-formats.html#Demuxers
+     - The system parameter (here `epsg:2154`) is the one used in the LAS point cloud. The geo localized frame will then be localized inside the point cloud, which will help register the COLMAP reconstructed point with the Lidar PointCloud. See more info [here](https://en.wikipedia.org/wiki/Spatial_reference_system). It must be compatible with [Proj](https://proj.org).
+     - `native-wrapper.sh` is the file we use to access PDraW tools, including vmeta-extract which will convert Anafi metadata into a csv file. See https://developer.parrot.com/docs/pdraw/userguide.html#use-the-pdraw-program
+     - `centroid.txt` is the file that was created in the first step when LAS files were converted into PLY files.
+     - `/path/to/colmap_images` is the folder from which every image in the colmap database will be 
 
-    The system parameter (here epsg:2154) is the one used in the point cloud. The geo localized frame will then be localized inside the point cloud, which will help register the COLMAP reconstructed point with the Lidar PointCloud. See more info [here](https://en.wikipedia.org/wiki/Spatial_reference_system). It must be compatible with [Proj](https://proj.org).
+
+    The video to colmap step will populate the scan db with new entries with the right camera parameters, and select a spatially optimal subset of frames from the full video for a photogrammetry with 1000 pictures. 1000 pictures might be overkill for scenes with low complexity (e.g. only one building), you can easily reduce it to 500 if reconstruction is too slow.
+    It will also create several txt files with list of file paths :
+     - `video_frames_for_thorough_scan.txt` : all images used in the first thorough photogrammetry. This will be used for feature extraction in order to not extract every feature from every frame. Indeed, the matching step in COLMAP will try to match EVERY frame in its database, and thus if we extract features from all frames, w will match every video frame (potentially thousands) which not what we want because otherwise the reconstruction would be unnecessarily long.
+     - `georef.txt` : all images with GPS position, and XYZ equivalent, with system and minus centroid of Lidar file. This will be used at the georeferencing stap. See https://colmap.github.io/faq.html#geo-registration
+
 
     And finally, it will divide long videos into chunks with corresponding list of filepath so that we don't deal with too large sequences (limit here is 4000 frames). Each chunk will have the list of frames stored in a file `full_chunk_N.txt` inside the Video folder.
 

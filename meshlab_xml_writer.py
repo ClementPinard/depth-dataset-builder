@@ -19,7 +19,8 @@ def create_project(mlp_path, model_paths, labels=None, transforms=None):
     for m, l, t in zip(model_paths, labels, transforms):
         mesh = etree.SubElement(group, "MLMesh")
         mesh.set("label", l)
-        mesh.set("filename", m)
+        relative_path = m.relpath(mlp_path.parent)
+        mesh.set("filename", relative_path)
         matrix = etree.SubElement(mesh, "MLMatrix44")
         matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in t) + "\n"
     tree = etree.ElementTree(base)
@@ -81,7 +82,8 @@ def add_meshes_to_project(input_mlp, output_mlp, model_paths, labels=None, trans
     for i, (m, l, t) in enumerate(zip(model_paths, labels, transforms)):
         mesh = etree.Element("MLMesh")
         mesh.set("label", l)
-        mesh.set("filename", m)
+        relative_path = m.relpath(output_mlp.parent)
+        mesh.set("filename", relative_path)
         matrix = etree.SubElement(mesh, "MLMatrix44")
         matrix.text = "\n" + "\n".join(" ".join(str(element) for element in row) + " " for row in t) + "\n"
         group.insert(start_index, mesh)
