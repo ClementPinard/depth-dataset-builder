@@ -8,8 +8,8 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 * [Software Dependencies](#software-dependencies)
 * [Hardware Dependencies](#hardware-dependencies)
 * [How it works](#how-it-works)
-* [Step by step guide](#usage)
-* [Special case : adding new images to an existing constructed dataset](#special-case-adding-new-images-to-an-existing-dataset)
+* [Usage](#usage)
+* [Special case : adding new images to an existing constructed dataset](#special-case--adding-new-images-to-an-existing-dataset)
 * [Using the constructed dataset for evaluation](#evaluation)
 * [Detailed method with the manoir example](#detailed-method-with-the-manoir-example)
 * [TODO](#todo)
@@ -38,7 +38,7 @@ For PDrAW, there should be a `native-wrapper.sh` file that you to keep a track o
 
 For COLMAP, you will need a vocab tree for feature matching. You can download them at https://demuc.de/colmap/#download . In our tests, we took the 256K version.
 
-## Hardware dependecies
+## Hardware dependencies
 
 To recreate the results of the study, you will need these hardware pieces :
  - Parrot Anafi
@@ -1100,6 +1100,9 @@ All these steps can be done under the script `picture_localization.py` with the 
 * `--rebuild_occlusion_mesh` : If selected, will rebuild a new dense point cloud and delauney mesh. Useful when new images see new parts of  the model
 * `--generic_model` : COLMAP model for image folders. Same zoom level assumed throughout whole folders. See https://colmap.github.io/cameras.html (default: OPENCV)
 
+## Evaluation
+
+TODO
 
 ## Detailed method with the "Manoir" example
 
@@ -1175,7 +1178,7 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
 
 [![Alt text](https://img.youtube.com/vi/NLIvrzUB9bY/0.jpg)](https://www.youtube.com/watch?v=NLIvrzUB9bY&list=PLMeM2q87QjqjAAbg8RD3F_J5D7RaTMAJj)
 
-#Todo
+# Todo
 
 ## Better point cloud registration
 
