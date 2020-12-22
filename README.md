@@ -9,7 +9,11 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 * [Hardware Dependencies](#hardware-dependencies)
 * [How it works](#how-it-works)
 * [Usage](#usage)
-* [Special case : adding new images to an existing constructed dataset](#special-case--adding-new-images-to-an-existing-dataset)
+    * [Working Directories](#working-directories)
+    * [How to read visualization](#how-to-read-visualization)
+    * [Running the full script](#running-the-full-script)
+    * [Manual step by step](#manual-step-by-step)
+    * [Special case : adding new images to an existing constructed dataset](#special-case--adding-new-images-to-an-existing-dataset)
 * [Using the constructed dataset for evaluation](#evaluation)
 * [Detailed method with the manoir example](#detailed-method-with-the-manoir-example)
 * [TODO](#todo)
@@ -66,52 +70,56 @@ See [Detailed method with the manoir example](#detailed-method-with-the-manoir-e
 3. Extract optimal frames from video for a thorough photogrammetry that will use a mix of pix4D flight plan pictures and video still frames.
     - The total number of frame must not be too high to prevent the reconstruction from lasting too long on a single desktop (we recommand between 500 an 1000 images)
     - At the same time, extract if possible information on camera parameters to identify which video sequences share the same parameters (e.g 4K videos vs 720p videos, or different levels of zooming)
-    - This step is done by the script `videos_to_colmap.py` (See Step by step guide, Step 5)
+    - This step is done by the script `videos_to_colmap.py` (See [step by step guide](#manual-step-by-step), Step 5)
 
 4. Georeference your images.
     - For each frame with *GPS* position, convert them in *XYZ* coorindates in the projection system used by the Lidar point cloud (Here, EPSG:2154 was used)
     - Substract to these coordinates the centroid that logged when converting the LAS file to PLY.
     - Log image filename and centered *XYZ* position in a file for georegistration of the reconstruction point cloud
-    - This step is also done by the script `videos_to_colmap.py` (See Step by step guide, Step 5)
+    - This step is also done by the script `videos_to_colmap.py` (See [step by step guide](#manual-step-by-step), Step 5)
 
 4. Generate sky maps of your drone pictures to help the photogrammetry filter out noise during matching (Step 6)
     - Use a Neural Network to segment the drone picture and generate masks so that the black areas will be ignored
     - This is done with the script `generate_sky_masks.py`
 
-3. Perform a photogrammetry on your pictures (See Step by step guide, Steps 6 - 7 - 8)
+3. Perform a photogrammetry on your pictures (See [step by step guide](#manual-step-by-step), Steps 6 - 7 - 8)
     - The recommended tool is COLMAP because further tools will use its output format
     - You should get a sparse 3D model, exhaustive enough to : 
         - Be matched with the Lidar Point cloud
         - Localize other video frames in the reconstruction
 
 4. Change reconstructed point cloud with shift and scale to match Lidar point cloud
-    - See [here](https://colmap.github.io/faq.html#geo-registration) for point cloud georegistration with colmap (See Step by step guide, Step 9)
+    - See [here](https://colmap.github.io/faq.html#geo-registration) for point cloud georegistration with colmap (See [step by step guide](#manual-step-by-step), Step 9)
 
 5. Video Localization :
     - Continue the photogrammetry with video frames at a low fps (we took 1fps). We do this in order to keep the whole mapping at a linear time (See Step by step guide, Step 10.3)
     - Merge all the resulting models into one full model with thorough photogrammetry frames and all the 1fps frames (See Step by step guide, Step 10.)
     - Finish registering the remaning frames. For RAM reasons, every video is divided into chunks, so that a sequence registered is never more than e.g. 4000 frames (See Step by step guide, Step 10.)
-    - Filter the final model at full framerate : remove points with absurd angular and translational accleration. Interpolate the resulting discarded points (but keep a track of them). This is done in the script `filter_colmap_model.py` (See Step by step guide, Step 10.)
+    - Filter the final model at full framerate : remove points with absurd angular and translational accleration. Interpolate the resulting discarded points (but keep a track of them). This is done in the script `filter_colmap_model.py` (See [step by step guide](#manual-step-by-step), Step 10.)
 
 6. Densify the resulting point cloud with COLMAP (see [here](https://colmap.github.io/tutorial.html#dense-reconstruction))
-    - Export a PLY file along with the VIS file with `colmap stereo_fusion`
+    - Export a PLY file along with the VIS file with `colmap stereo_fusion` (See [step by step guide](#manual-step-by-step), Step 11)
 
-7. Match the Lidar Point cloud and full reconstruction point cloud together with ICP.
+7. Match the Lidar Point cloud and full reconstruction point cloud together with ICP. (See [step by step guide](#manual-step-by-step) Step 12)
     - The georegistration of the reconstructed point cloud should be sufficient to get a good starting point.
     - By experience, the best method here is to use CloudCompare, but You can use ETH3D or PCL to do it
     - The resulting transformation matrix should be stored in a TXT file, the same way cloudcompare proposes to do it
 
-8. Construct a PLY+VIS file pair based on lidar scan
+8. Construct a PLY+VIS file pair based on lidar scan (See [step by step guide](#manual-step-by-step) Step 13.2)
     - The PLY file is basically every lidar point
     - The VIS file stores frames from which point is visible : we reuse the PLY+VIS from step 6, and assume a lidar point has the same visibility as the closest point in the denified reconstructed point.
 
-9. Run the delauney mesher tool from COLMAP to construct an occlusion mesh
+9. Run the delauney mesher tool from COLMAP to construct an occlusion mesh (See [step by step guide](#manual-step-by-step) Step 13.3)
 
-10. Construct the Splats with ETH3D
+10. Construct the Splats with ETH3D (See [step by step guide](#manual-step-by-step) Step 13.4)
 
-11. Construct the ground truth Depth with ETH3D
+11. Filter Video localization with SavGol filter to have a physically possible acceleration, and interpolate position for frame not localized. (See [step by step guide](#manual-step-by-step) Step 14)
 
-12. Visualize and Convert the resulting dataset to match the format of a more well known dataset, like KITTI.
+12. Construct the ground truth Depth with ETH3D (See [step by step guide](#manual-step-by-step) Step 15)
+
+13. Visualize and Convert the resulting dataset to match the format of a more well known dataset, like KITTI. (See [step by step guide](#manual-step-by-step) Step 16)
+
+14. Construct the evaluation dataset by taking a subset of frames from the created dataset. (See [step by step guide](#manual-step-by-step) Step 17)
 
 
 ## Usage
@@ -931,48 +939,47 @@ This will essentially do the same thing as the script, in order to let you chang
     Use COLMAP delaunay mesher to generate a mesh from PLY + VIS.
     Normally, COLMAP expect the cloud it generated when running the `stereo_fusion` step, but we use the lidar point cloud instead.
 
-    Get a PLY file for the registered lidar point cloud
-    
-    ```
-    ETHD3D/build/NormalEstimator \
-    -i Workspace/aligned.mlp \
-    -o Workspace/lidar/lidar_with_normals.ply
-    ```
+    1. Get a PLY file for the registered lidar point cloud
+        ```
+        ETHD3D/build/NormalEstimator \
+        -i Workspace/aligned.mlp \
+        -o Workspace/lidar/lidar_with_normals.ply
+        ```
+    2. Create a Vis file with point visibility in the same way it is done with `georef_dense.ply.vis`
+        ```
+        pcl_util/build/CreateVisFile \
+        --georef_dense Workspace/Thorough/georef_dense.ply \
+        --lidar Workspace/Lidar/lidar_with_normals.ply \
+        --output_cloud Workspace/Thorough/dense/fused.ply \
+        --resolution 0.2
+        ```
 
-    ```
-    pcl_util/build/CreateVisFile \
-    --georef_dense Workspace/Thorough/georef_dense.ply \
-    --lidar Workspace/Lidar/lidar_with_normals.ply \
-    --output_cloud Workspace/Thorough/dense/fused.ply \
-    --resolution 0.2
-    ```
+        This is important to place the resulting point cloud at root of COLMAP MVS workspace `/path/to/dense` that was used for generating `/path/to/georef_dense.ply` and name it `fused.ply` because it is hardwritten on COLMAP's code.
+        The file `/path/to/fused.ply.vis` will also be generated.
+        The `--resolution` option is used to reduce the computational load of the next step.
 
-    This is important to place the resulting point cloud at root of COLMAP MVS workspace `/path/to/dense` that was used for generating `/path/to/georef_dense.ply` and name it `fused.ply` because it is hardwritten on COLMAP's code.
-    The file `/path/to/fused.ply.vis` will also be generated.
-    The `--resolution` option is used to reduce the computational load of the next step.
+    3. Run Delauney Mesher
+        ```
+        colmap delaunay_mesher \
+        --input_type dense \
+        --input_path Workspace/Thorough/dense \
+        --output_path Workspace/Lidar/occlusion_mesh.ply
+        ```
 
-    ```
-    colmap delaunay_mesher \
-    --input_type dense \
-    --input_path Workspace/Thorough/dense \
-    --output_path Workspace/Lidar/occlusion_mesh.ply
-    ```
+    4. Generate splats for lidar points outside of occlusion mesh close range. See https://github.com/ETH3D/dataset-pipeline#splat-creation
+        ```
+        ETH3D/build/SplatCreator \
+        --point_normal_cloud_path Workspace/Lidar/lidar_with_normals.ply \
+        --mesh_path Workspace/Lidar/occlusion_mesh.ply \
+        --output_path Workspace/Lidar/splats.ply
+        --distance_threshold 0.1
+        --max_splat_size 0.25
+        ```
 
-    Generate splats for lidar points outside of occlusion mesh close range. See https://github.com/ETH3D/dataset-pipeline#splat-creation
-
-    ```
-    ETH3D/build/SplatCreator \
-    --point_normal_cloud_path Workspace/Lidar/lidar_with_normals.ply \
-    --mesh_path Workspace/Lidar/occlusion_mesh.ply \
-    --output_path Workspace/Lidar/splats.ply
-    --distance_threshold 0.1
-    --max_splat_size 0.25
-    ```
-
-    For every point in `--point_normal_cloud_path`, distance from mesh given in `--mesh_path` is computed, and if it is higher than, `--distance threshold`, it creates a square oriented by cloud normal. The square size given by minimum between the distance of the points from its 4 nearest neighbours and `--max_splat_size`. The `--max_splat_size` prevents potentially isolated points to have an enormous splat.
+        For every point in `--point_normal_cloud_path`, distance from mesh given in `--mesh_path` is computed, and if it is higher than, `--distance threshold`, it creates a square oriented by cloud normal. The square size given by minimum between the distance of the points from its 4 nearest neighbours and `--max_splat_size`. The `--max_splat_size` prevents potentially isolated points to have an enormous splat.
 
 
-13. Video localization filtering and interpolation.
+14. Video localization filtering and interpolation.
     
     `video_folder` and `video_workspace` are placeholders following the different convention from step 10, because they are located in Raw_output_directory.
     `video_folder`is the placeholder for `Raw_output_directory/COLMAP_img_root/Videos/{resolution}/{video_name}`
@@ -991,7 +998,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --interpolated_frames_list video_workspace/interpolated_frames.txt
     ```
 
-14. Raw Groundtruth generation
+15. Raw Groundtruth generation
     
     `video_folder` and `video_workspace` are placeholders following the same convention as in step 13.
 
@@ -1031,7 +1038,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --max_occlusion_depth 200
     ```
 
-15. Dataset conversion
+16. Dataset conversion
 
     `video_folder` and `video_workspace` are placeholders following the same convention as in step 13.
 
@@ -1054,7 +1061,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will create a dataset at the folder `Converted_output_directory/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file. See [Output directories](#output/directories).
 
-16. Evaluation list creation
+17. Evaluation list creation
     
     Once everything is constructed, you can specify a subset of e.g. 500 frames for evaluaton.
 
