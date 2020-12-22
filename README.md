@@ -529,17 +529,19 @@ This will essentially do the same thing as the script, in order to let you chang
      --image_path Workspace/COLMAP_img_root
      ```
  ----
-    *Notes*
-     - This script is designed to circumvent the fact that COLMAP will try to compute the features of all the images in the database, will try to match all the feature vectors in the database, and try to map a reconstruction with all the matches. As such, if we add all the video frames to the databse we won't be able to run the photogrammetry with only a subset of the video frames. In order to do so, we add all the frames to a fictive database and note the image id numbers in the video metadata for later use. We then construct a small database with only the frames we want. And each time we want to add frames to this database, we add it with the id numbers that was generated for the fictive database, with the right camera id. See https://colmap.github.io/tutorial.html#database-management
-     - This script is initially intended to be used for Anafi video, with metadata directly embedded in the video feed. However, if you have other videos with the same kind of metadata (GPS, timestamp, orientation ...), you kind manually put them in a csv file that will be named `[video_name]_metadata.csv` alongside the video file `[vide_name].mp4`. One row per frame, obligatory fields are :
-        - `camera_model` : See https://colmap.github.io/cameras.html
-        - `camera_params` : COLMAP format : tuples beginning with focal length(s) and then distortion params
-        - `x`, `y`, `z` : Frames positions : if not known, put nan
-        - `frame_quat_w`, `frame_quat_x`, `frame_quat_y`, `frame_quat_z` : Frame orientations : if not known, put nan
-        - `location_valid` : Whether `x,y,z` position should be trusted as absolute with respect to the point cloud or not. If `x,y,z` positions are known but only reltive to each other, we can still leverage that data for COLMAP optimal sample, and later model rescaling after thorough photogrammetry.
-        - `time` : timestamp, in microseconds.
-        An exemple of this metadata csv generaton can be found with `convert_euroc.py` , which will convert EuRoC dataset to videos with readable metadata.
-        Finally, if no metadata is available for your video, because e.g. it is a handheld video, the script will consider your video as generic : it won't be used for thorough photogrammetry (unless the `--include_lowfps` option is chosen), but it will try to localize it and find the cameras intrinsics. Be warned that it is not compatible with variable zoom.
+ *Notes*
+ - This script is designed to circumvent the fact that COLMAP will try to compute the features of all the images in the database, will try to match all the feature vectors in the database, and try to map a reconstruction with all the matches. As such, if we add all the video frames to the databse we won't be able to run the photogrammetry with only a subset of the video frames. In order to do so, we add all the frames to a fictive database and note the image id numbers in the video metadata for later use. We then construct a small database with only the frames we want. And each time we want to add frames to this database, we add it with the id numbers that was generated for the fictive database, with the right camera id. See https://colmap.github.io/tutorial.html#database-management
+ - This script is initially intended to be used for Anafi video, with metadata directly embedded in the video feed. However, if you have other videos with the same kind of metadata (GPS, timestamp, orientation ...), you kind manually put them in a csv file that will be named `[video_name]_metadata.csv` alongside the video file `[vide_name].mp4`. One row per frame, obligatory fields are :
+    - `camera_model` : See https://colmap.github.io/cameras.html
+    - `camera_params` : COLMAP format : tuples beginning with focal length(s) and then distortion params
+    - `x`, `y`, `z` : Frames positions : if not known, put nan
+    - `frame_quat_w`, `frame_quat_x`, `frame_quat_y`, `frame_quat_z` : Frame orientations : if not known, put nan
+    - `location_valid` : Whether `x,y,z` position should be trusted as absolute with respect to the point cloud or not. If `x,y,z` positions are known but only reltive to each other, we can still leverage that data for COLMAP optimal sample, and later model rescaling after thorough photogrammetry.
+    - `time` : timestamp, in microseconds.
+
+    An exemple of this metadata csv generaton can be found with `convert_euroc.py` , which will convert EuRoC dataset to videos with readable metadata.
+
+    Finally, if no metadata is available for your video, because e.g. it is a handheld video, the script will consider your video as generic : it won't be used for thorough photogrammetry (unless the `--include_lowfps` option is chosen), but it will try to localize it and find the cameras intrinsics. Be warned that it is not compatible with variable zoom.
 
 
 
