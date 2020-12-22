@@ -324,7 +324,20 @@ You can run the whole script with ```python main_pipeline.py```. If you don't ha
 Example command :
 
 ```
-python main_pipeline.py --input_folder /media/user/data/input_dataset/ --raw_output_folder /media/user/data/ground_truth_raw/ --converted_output_folder /media/user/data/ground_truth_converted/ --workspace ../workspace --total_frames 600 --SOR 10 5 --eth3d ../dataset-pipeline/build/ --nw ../AnafiSDK/out/pdraw-linux/staging/native-wrapper.sh --generic_model OPENCV --max_num_matches 25000 --match_method exhaustive --multiple_models --registration_method interactive --mesh_resolution 0.1 --splats --splat_threshold 0.05 --lowfps 1 --save_space --log out.log --system epsg:3949 -vv
+python main_pipeline.py \
+--input_folder /media/user/data/input_dataset/ \
+--raw_output_folder /media/user/data/ground_truth_raw/ \
+--converted_output_folder /media/user/data/ground_truth_converted/ \
+--workspace ../workspace \
+--total_frames 600 --SOR 10 5 \
+--eth3d ../dataset-pipeline/build/ \
+--nw ../AnafiSDK/out/pdraw-linux/staging/native-wrapper.sh \
+--generic_model OPENCV \
+--max_num_matches 25000 \
+--match_method exhaustive \
+--multiple_models --registration_method interactive \
+--mesh_resolution 0.1 --splats --splat_threshold 0.05 \
+--lowfps 1 --save_space --log out.log --system epsg:3949 -vv
 ```
 
 #### Parameters breakdown
