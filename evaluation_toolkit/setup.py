@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -10,7 +10,7 @@ setup(name='inference toolkit',
       description='Inference and evaluation routines to test on a dataset constructed with validation set constructor',
       long_description=long_description,
       long_description_content_type="text/markdown",
-      packages=find_packages(),
+      packages=["evaluation_toolkit"],
       entry_points={
           'console_scripts': [
               'depth_evaluation = evaluation_toolkit.depth_evaluation:main'

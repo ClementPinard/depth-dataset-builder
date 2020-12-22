@@ -1,6 +1,6 @@
 # Evaluation Toolkit
 
-Set of tools to run a particular algorithm on a dataset constructed with the validation set constructor, and evaluate it, along with advanced statistics regarding depth value, dans pixel position in image with repsect to flight path vector.
+Set of tools to run a particular algorithm on a dataset constructed with the validation set constructor, and evaluate it, along with advanced statistics regarding depth value and pixel position in image with respect to flight path vector.
 
 ## Inference Example
 

@@ -1068,13 +1068,14 @@ This will essentially do the same thing as the script, in order to let you chang
     ```
     python construct_evaluation_metadata.py \
     --dataset_dir Converted_output_directory/dataset/ \
+    --max_num_samples 500 \
     --split 0.9 \
     --seed 0 \
     --min_shift 50 \
     --allow_interpolated_frames
     ```
 
-    this will select 500 frames (at most) such that 90% (`--split 0.9`) of folders are kept as training folders, and every frame has at least 50 frames with valid odometry before (`--min_shift 50`). Interpolated frames are allowed for odometry to be considered valid (but not for depth ground truth) (`--allow_interpolated_frames`)
+    this will try to select at most 500 frames (`--max_num_samples 500`) such that 90% (`--split 0.9`) of folders are kept as training folders, and every frame has at least 50 frames with valid odometry before (`--min_shift 50`). Interpolated frames are allowed for odometry to be considered valid (but not for depth ground truth) (`--allow_interpolated_frames`)
 
     It will create a txt file with test file paths (`/path/to/dataset/test_files.txt`), a txt file with train folders (`/path/to/dataset/train_folders.txt`) and lastly a txt file with flight path vector coordinates (in pixels) (`/path/to/dataset/fpv.txt`)
 
@@ -1109,7 +1110,11 @@ All these steps can be done under the script `picture_localization.py` with the 
 
 ## Evaluation
 
-TODO
+Once you have you dataset, with your depth maps and a list of frames used for evaluation, you can use a special package to get evaluation metrics of your depth estimation algorithm. See [dedicated README](evaluation_toolkit/README.md)
+
+```
+pip install -e evaluation_toolkit
+```
 
 ## Detailed method with the "Manoir" example
 
@@ -1184,6 +1189,24 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
 ### Resulting video
 
 [![Alt text](https://img.youtube.com/vi/NLIvrzUB9bY/0.jpg)](https://www.youtube.com/watch?v=NLIvrzUB9bY&list=PLMeM2q87QjqjAAbg8RD3F_J5D7RaTMAJj)
+
+### Depth algorithm evaluation.
+
+Training and evaluation was done with SFMLearner. See inference script https://github.com/ClementPinard/SfmLearner-Pytorch/blob/validation_set_constructor/inference.py
+
+```
+Results for usual metrics
+   AbsDiff,    StdDiff,     AbsRel,     StdRel,     AbsLog,     StdLog,         a1,         a2,         a3
+   17.1951,    33.2526,     0.3735,     0.9200,     0.3129,     0.4512,     0.5126,     0.7629,     0.8919
+```
+
+Graphs :
+
+![h](images/Figure_1.png)
+![h](images/Figure_2.png)
+![h](images/Figure_3.png)
+![h](images/Figure_4.png)
+![h](images/Figure_5.png)
 
 # Todo
 
