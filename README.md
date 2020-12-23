@@ -414,6 +414,16 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
 7. Ground truth creation
     * `--eth3d_splat_radius` : Splat radius for occlusion mesh boundaries, radius of area (in meters) which will be defined as invalid because of occlusion uncertainty, see `splat_radius` option for ETH3D. Thumb rule here is that it should be around your point cloud precision. (default 0.01, i.e. 1cm)
 
+**Tip** : As a lot of information qill go through your terminal, you can use `-vv` and `--log out.log` in order to have two terminals with different verbose levels.
+
+- 1st terminal : `main_pipeline` script, with `-vv` and `--log out.log` selected
+- 2nd terminal : `tail -f out.log`
+
+First terminal will log information about the general workflow without details
+Second terminal will log information given by COLMAP and other commands (much more verbose)
+
+This will help you to have information about e.g. what video the script is working on, and also what is being currently done by COLMAP.
+
 ### Manual step by step
 
 This will essentially do the same thing as the script, in order to let you change some steps at will.
@@ -1159,6 +1169,12 @@ We have 65k frames in total.
 
 ![h](images/piloting1.jpg)
 ![h](images/piloting2.jpg)
+
+### Main Pipeline script
+
+Command used (Input, Workspace, Output and exectuables are omitted, `--system` used is the same as the one used by professional surveyors (epsg:2154))
+
+```python main_pipeline.py  --total_frames 1000 --SOR 10 5 --max_num_matches 25000 --multiple_models --registration_method interactive --mesh_resolution 0.1 --splat_threshold 0.05 --lowfps 1 --save_space --splats --gt_images --match_method exhaustive -vv --log out.log```
 
 ### Optimal video sampling
 
