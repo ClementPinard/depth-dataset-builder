@@ -54,8 +54,10 @@ Note that for our study, we provided the Anafi drone (\~700€), and the point c
 
 # How it works
 
-Here are the key steps of the dataset creation :
-See [Detailed method with the manoir example](#detailed-method-with-the-manoir-example) for a concrete example with options used.
+Here are the key steps of the dataset creation.
+- This is only a summary, see [Step by Step guide](#manual-step-by-step) for a complete explanation of all commands and scripts used.
+- See [Running the full script](#running-the-full-script) for an automated version with minimum human intervention.
+- See [Detailed method with the manoir example](#detailed-method-with-the-manoir-example) for a concrete example with options used.
 
 1. Data acquisition on a particular scene
     - Make a photogrammetry flight plan with any drone, You can use e.g. the Anafi with the Pix4D capture app (it's free). It is important that pictures have GPS info in the exif
@@ -1170,7 +1172,7 @@ The second image shows the frames that have been kept in order to stay at 1000 f
 
 Thorough photogrammetry was done with 1000 frames. Notice that not all the area was mapped. It is expected to be completed once we take care of each video.
 
-![h](https://gitlab.ensta.fr/pinard/drone-depth-validation-set/raw/master/images/photog1.jpg)
+![h](images/photog1.jpg)
 
 ### Video localisation
 
