@@ -88,7 +88,7 @@ def slerp_quats(quat_df, prefix=""):
     return pd.DataFrame(slerp(total_index).as_quat(), index=quat_df.index)
 
 
-def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path,
+def filter_colmap_model(input_images_colmap, output_images_colmap, metadata,
                         filter_degree=3, filter_time=0.1,
                         threshold_t=0.01, threshold_q=5e-3,
                         visualize=False, **env):
@@ -98,7 +98,6 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path
         images_dict = rm.read_images_binary(input_images_colmap)
     else:
         print(input_images_colmap.ext)
-    metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
     framerate = metadata["framerate"].iloc[0]
     filter_length = 2*int(filter_time * framerate) + 1
 
@@ -259,9 +258,9 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path
     print("number of not localized by colmap : {}/{} ({:.2f}%)".format(colmap_outliers,
                                                                        total_frames,
                                                                        100 * colmap_outliers/total_frames))
-    print("Total number of outliers : {} / {} ({:.2f}%)".format(sum(metadata["outlier"]),
-                                                                total_frames,
-                                                                100 * sum(metadata["outlier"])/total_frames))
+    print("Total number of outliers for valid sequence : {} / {} ({:.2f}%)".format(sum(metadata["outlier"]),
+                                                                                   len(metadata),
+                                                                                   100 * sum(metadata["outlier"])/len(metadata)))
 
     if visualize:
         plt.show()
@@ -292,6 +291,7 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata_path
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
-    interpolated_frames = filter_colmap_model(metadata_path=args.metadata, **env)
+    metadata = pd.read_csv(args.metadata).set_index("db_id", drop=False).sort_values("time")
+    interpolated_frames = filter_colmap_model(metadata=metadata, **env)
     with open(args.interpolated_frames_list, "w") as f:
         f.write("\n".join(interpolated_frames) + "\n")
