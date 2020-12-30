@@ -23,6 +23,16 @@ parser.add_argument('--allow_interpolated_frames', action='store_true',
                     help='If set, will consider frames with interpolated odometry to be valid')
 
 
+def flight_path_vector(sequence, max_shift):
+    tvec = sequence[["pose03", "pose13", "pose23"]]
+    displacement = np.zeros_like(tvec)
+    for j in range(1, max_shift):
+        displacement += tvec.diff(j) / j
+    fpv_x = sequence["fx"] * displacement["pose03"] / displacement["pose23"] + sequence["cx"]
+    fpv_y = sequence["fy"] * displacement["pose13"] / displacement["pose23"] + sequence["cy"]
+    return fpv_x, fpv_y
+
+
 def main():
     args = parser.parse_args()
     random.seed(args.seed)
@@ -53,19 +63,14 @@ def main():
             invalidity_start.append(len(valid_odometry_frames))
         valid_sequences = [metadata.iloc[s:e].copy() for s, e in zip(validity_start, invalidity_start)]
         for s in valid_sequences:
-            if len(s) <= args.min_shift:
-                continue
-            tvec = s[["pose03", "pose13", "pose23"]]
-            displacement = np.zeros_like(tvec)
-            max_shift = 3
-            for j in range(1, max_shift):
-                displacement += tvec.diff(j) / j
-            s["fpv_x"] = s["fx"] * displacement["pose03"] / displacement["pose23"] + s["cx"]
-            s["fpv_y"] = s["fy"] * displacement["pose13"] / displacement["pose23"] + s["cy"]
+            fpv_x, fpv_y = flight_path_vector(s, max_shift=3)
+            s["fpv_x"] = fpv_x
+            s["fpv_y"] = fpv_y
 
             valid_frames = s.iloc[args.min_shift:]
             valid_frames = valid_frames[~valid_frames["interpolated"]]
-            valid_frames["image_path"] = [args.dataset_dir.relpathto(v) / Path(f).basename() for f in valid_frames["image_path"].values]
+            valid_frames["image_path"] = [args.dataset_dir.relpathto(v) / Path(f).basename()
+                                          for f in valid_frames["image_path"].values]
 
             total_valid_frames.append(valid_frames)
     total_valid_frames_df = pd.concat(total_valid_frames)
