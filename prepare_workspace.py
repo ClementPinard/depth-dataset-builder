@@ -53,7 +53,7 @@ def prepare_workspace(path, env, with_lidar=True):
     env["video_frame_list_thorough"] = env["colmap_img_root"] / "video_frames_for_thorough_scan.txt"
     env["georef_frames_list"] = env["colmap_img_root"] / "georef.txt"
 
-    env["georefrecon_ply"] = env["georef_recon"] / "georef_reconstruction.ply"
+    env["georefrecon_ply"] = env["thorough_recon"] / "georef_reconstruction.ply"
     env["indexed_vocab_tree"] = env["workspace"] / "vocab_tree_thorough.bin"
 
 
