@@ -148,50 +148,65 @@ def main(args):
         T=cameras_T,
         device=device,
     )
-    with torch.no_grad():
-        padded_points = list_to_padded([points_gt[visibility[c]] for c in range(N)], pad_value=1e-3)
-        points_2D_gt = cameras_absolute_gt.transform_points(padded_points, eps=1e-4)[:, :, :2]
 
-    # initialize the absolute log-rotations/translations with random entries
-    # log_R_absolute_init = torch.randn(N, 3, dtype=torch.float32, device=device)
-    # T_absolute_init = torch.randn(N, 3, dtype=torch.float32, device=device)
+    # Normally, the points_2d are the one we should use to minimize reprojection errors.
+    # But we have been dealing with unstability, so we can reproject the 3D points instead and use their reprojection
+    # since we assume Colmap's bundle adjuster to have converged alone before.
+    use_3d_points = True
+    if use_3d_points:
+        with torch.no_grad():
+            padded_points = list_to_padded([points_3d[visibility[c]] for c in range(N)], pad_value=1e-3)
+            points_2D_gt = cameras_absolute_gt.transform_points(padded_points, eps=1e-4)[:, :, :2]
+
+    # Starting point is normally points_3d and camera_R and camera_T
+    # For stability test, you can try to add noise and see if the otpitmization
+    # gets back to intial state (spoiler alert, it's complicated)
+    # Set noise and shift to 0 for a normal starting point
     noise = 0
     shift = 0.1
-    points_absolute_init = points_gt + noise*torch.randn(points_gt.shape, dtype=torch.float32, device=device) + shift
+    points_init = points_3d + noise*torch.randn(points_3d.shape, dtype=torch.float32, device=device) + shift
 
-    log_R_absolute_init = so3_log_map(cameras_R) + noise * torch.randn(N, 3, dtype=torch.float32, device=device)
-    T_absolute_init = cameras_T + noise * torch.randn(cameras_T.shape, dtype=torch.float32, device=device) - shift
-    cams_init = cameras_params + noise * torch.randn(cameras_params.shape, dtype=torch.float32, device=device)
-    # points_absolute_init = points_gt
-
-    # furthermore, we know that the first camera is a trivial one
-    #    (see the description above)
-    #log_R_absolute_init[0, :] = 0.
-    #T_absolute_init[0, :] = 0.
+    log_R_init = so3_log_map(cameras_R) + noise * torch.randn(N, 3, dtype=torch.float32, device=device)
+    T_init = cameras_T + noise * torch.randn(cameras_T.shape, dtype=torch.float32, device=device) - shift
+    cams_init = cameras_params  # + noise * torch.randn(cameras_params.shape, dtype=torch.float32, device=device)
 
     # instantiate a copy of the initialization of log_R / T
-    log_R_absolute = log_R_absolute_init.clone().detach()
-    log_R_absolute.requires_grad = True
-    T_absolute = T_absolute_init.clone().detach()
-    T_absolute.requires_grad = True
+    log_R = log_R_init.clone().detach()
+    log_R.requires_grad = True
+    T = T_init.clone().detach()
+    T.requires_grad = True
 
     cams_params = cams_init.clone().detach()
     cams_params.requires_grad = True
 
-    points_absolute = points_absolute_init.clone().detach()
-    points_absolute.requires_grad = True
+    points = points_init.clone().detach()
+    points.requires_grad = True
 
     # init the optimizer
-    optimizer = torch.optim.SGD([points_absolute, log_R_absolute, T_absolute], lr=args.lr, momentum=0.9)
+    # Different learning rates per parameter ? By intuition I'd say that it should be higher for T and lower for log_R
+    # Params could be optimized as well but it's unlikely to be interesting
+    param_groups = [{'params': points, 'lr': args.lr},
+                    {'params': log_R, 'lr': 0.1 * args.lr},
+                    {'params': T, 'lr': 2 * args.lr},
+                    {'params': cams_params, 'lr': 0}]
+    optimizer = torch.optim.SGD(param_groups, lr=args.lr, momentum=0.9)
 
     # run the optimization
     n_iter = 200000  # fix the number of iterations
-    with torch.no_grad():
-        padded_points = list_to_padded([points_gt[visibility[c]] for c in range(N)], pad_value=1e-3)
-        projected_points = cameras_absolute_gt.transform_points(padded_points, eps=1e-4)[:, :, :2]
-        points_distance = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
-        inliers = (points_distance < 100).clone().detach()
-        print(inliers)
+    # Compute inliers
+    # In the model, some 3d points have their reprojection way off compared to the
+    # target 2d point. It is potentially a great source of instability. inliers is
+    # Keeping track of those problematic points to keep them out of the optimization
+    discard_outliers = True
+    if discard_outliers:
+        with torch.no_grad():
+            padded_points = list_to_padded([points_3d[visibility[c]] for c in range(N)], pad_value=1e-3)
+            projected_points = cameras_absolute_gt.transform_points(padded_points, eps=1e-4)[:, :, :2]
+            points_distance = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
+            inliers = (points_distance < 100).clone().detach()
+            print(inliers)
+    else:
+        inliers = points_2D_gt[nonzer] == points_2D_gt[nonzer]  # All true, except NaNs
     loss_log = []
     cam_dist_log = []
     pts_dist_log = []
@@ -199,41 +214,40 @@ def main(args):
         # re-init the optimizer gradients
         optimizer.zero_grad()
 
-        # compute the absolute camera rotations as
-        # an exponential map of the logarithms (=axis-angles)
-        # of the absolute rotations
-        # R_absolute = so3_exponential_map(log_R_absolute)
-        R_absolute = cameras_R
-
         fxfyu0v0 = cams_params[cameras_id_per_image]
         # get the current absolute cameras
         cameras_absolute = PerspectiveCameras(
-                focal_length=fxfyu0v0[:, :2],
-                principal_point=fxfyu0v0[:, 2:],
-            R=R_absolute,
-            T=T_absolute,
+            focal_length=fxfyu0v0[:, :2],
+            principal_point=fxfyu0v0[:, 2:],
+            R=so3_exponential_map(log_R),
+            T=T,
             device=device,
         )
 
-        padded_points = list_to_padded([points_absolute[visibility[c]] for c in range(N)], pad_value=1e-3)
+        padded_points = list_to_padded([points[visibility[c]] for c in range(N)], pad_value=1e-3)
 
-        projected_points_3D = cameras_absolute.transform_points(padded_points, eps=1e-4)
-        projected_points = projected_points_3D[:, :, :2]
-        with torch.no_grad():
+        # two ways of optimizing :
+        # 1) minimize 2d projection error. Potentially unstable, especially with very close points.
+        # This is problematic as close points are the ones with which we want the pose modification to be low
+        # but gradient descent makes them with the highest step size. We can maybe use Adam, but unstability remains.
+        #
+        # 2) minimize 3d relative position error. No more unstability for very close points.
+        # 2d reprojection error is not guaranteed to be minimized
+
+        minimize_2d = True
+        if minimize_2d:
+            projected_points_3D = cameras_absolute.transform_points(padded_points, eps=1e-4)
+            projected_points = projected_points_3D[:, :, :2]
             inliers = inliers & (projected_points_3D[:, :, 2][nonzer] > 0)
-        #print(R_absolute[0], cameras_R[0])
-        #print(T_absolute[0], cameras_T[0])
-        #print(projected_points[0,0], points_2D_gt[0,0])
-        # distances = (projected_points[0] - points_2D_gt[0]).norm(dim=-1).detach().cpu().numpy()
-        # from matplotlib import pyplot as plt
-        # plt.plot(distances[:(visibility[0]).sum()])
+            # distances = (projected_points[0] - points_2D_gt[0]).norm(dim=-1).detach().cpu().numpy()
+            # from matplotlib import pyplot as plt
+            # plt.plot(distances[:(visibility[0]).sum()])
 
-        # compare the composed cameras with the ground truth relative cameras
-        # camera_distance corresponds to $d$ from the description
-        # points_distance = smooth_l1_loss(projected_points, points_2D_gt)
-        # points_distance = (smooth_l1_loss(projected_points, points_2D_gt, reduction='none')[nonzer]).sum(dim=1)
-        points_distance = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
-        points_distance_filtered = points_distance[inliers]
+            # Different loss functions for reprojection error minimization
+            # points_distance = smooth_l1_loss(projected_points, points_2D_gt)
+            # points_distance = (smooth_l1_loss(projected_points, points_2D_gt, reduction='none')[nonzer]).sum(dim=1)
+            points_distance = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
+            points_distance_filtered = points_distance[inliers]
         # 100*((points_gt - points_absolute) ** 2).sum() #
         loss = points_distance_filtered.mean() + 10000*chamfer_distance(points_gt[None], points_absolute[None])[0]
         # our loss function is the camera_distance
