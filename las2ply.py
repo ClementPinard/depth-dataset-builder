@@ -25,7 +25,7 @@ def load_and_convert(input_file, output_folder, verbose=False):
         offset = np.array(laspy.file.File(input_file, mode="r").header.offset)
     else:
         offset = np.zeros(3)
-    cloud = PyntCloud.from_file(input_file)
+    cloud = PyntCloud.from_file(input_file, xyz_dtype="float64")
     if verbose:
         print(cloud.points)
 
