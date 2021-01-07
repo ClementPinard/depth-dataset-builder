@@ -58,6 +58,7 @@ def main(args):
     print(cameras_df)
 
     ref_pointcloud = PyntCloud.from_file(args.ply)
+    ref_pointcloud = torch.from_numpy(ref_pointcloud.xyz).to(device, dtype=args.dtype)
 
     points_3d = np.stack(points_df["xyz"].values)
     points_3d = torch.from_numpy(points_3d).to(device, dtype=args.dtype)
@@ -157,6 +158,7 @@ def main(args):
         with torch.no_grad():
             padded_points = list_to_padded([points_3d[visibility[c]] for c in range(N)], pad_value=1e-3)
             points_2D_gt = cameras_absolute_gt.transform_points(padded_points, eps=1e-4)[:, :, :2]
+            relative_points_gt = padded_points @ cameras_R + cameras_T
 
     # Starting point is normally points_3d and camera_R and camera_T
     # For stability test, you can try to add noise and see if the otpitmization
@@ -196,7 +198,7 @@ def main(args):
     # Compute inliers
     # In the model, some 3d points have their reprojection way off compared to the
     # target 2d point. It is potentially a great source of instability. inliers is
-    # Keeping track of those problematic points to keep them out of the optimization
+    # keeping track of those problematic points to discard them from optimization
     discard_outliers = True
     if discard_outliers:
         with torch.no_grad():
@@ -213,13 +215,14 @@ def main(args):
     for it in range(n_iter):
         # re-init the optimizer gradients
         optimizer.zero_grad()
+        R = so3_exponential_map(log_R)
 
         fxfyu0v0 = cams_params[cameras_id_per_image]
         # get the current absolute cameras
         cameras_absolute = PerspectiveCameras(
             focal_length=fxfyu0v0[:, :2],
             principal_point=fxfyu0v0[:, 2:],
-            R=so3_exponential_map(log_R),
+            R=R,
             T=T,
             device=device,
         )
@@ -231,14 +234,21 @@ def main(args):
         # This is problematic as close points are the ones with which we want the pose modification to be low
         # but gradient descent makes them with the highest step size. We can maybe use Adam, but unstability remains.
         #
-        # 2) minimize 3d relative position error. No more unstability for very close points.
-        # 2d reprojection error is not guaranteed to be minimized
+        # 2) minimize 3d relative position error (initial 3d relative position is considered groundtruth). No more unstability for very close points.
+        # 2d reprojection error is not guaranteed to be minimized though
 
         minimize_2d = True
+        chamfer_weight = 1e3
+        verbose = True
+
+        chamfer_dist = chamfer_distance(ref_pointcloud[None], points[None])[0]
         if minimize_2d:
-            projected_points_3D = cameras_absolute.transform_points(padded_points, eps=1e-4)
+            projected_points_3D = cameras_absolute.transform_points(padded_points, eps=1e-4)[..., :2]
             projected_points = projected_points_3D[:, :, :2]
+            # Discard points with a depth < 0 (theoretically impossible)
             inliers = inliers & (projected_points_3D[:, :, 2][nonzer] > 0)
+
+            # Plot point distants for first image
             # distances = (projected_points[0] - points_2D_gt[0]).norm(dim=-1).detach().cpu().numpy()
             # from matplotlib import pyplot as plt
             # plt.plot(distances[:(visibility[0]).sum()])
@@ -246,29 +256,51 @@ def main(args):
             # Different loss functions for reprojection error minimization
             # points_distance = smooth_l1_loss(projected_points, points_2D_gt)
             # points_distance = (smooth_l1_loss(projected_points, points_2D_gt, reduction='none')[nonzer]).sum(dim=1)
-            points_distance = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
-            points_distance_filtered = points_distance[inliers]
-        # 100*((points_gt - points_absolute) ** 2).sum() #
-        loss = points_distance_filtered.mean() + 10000*chamfer_distance(points_gt[None], points_absolute[None])[0]
-        # our loss function is the camera_distance
+            proj_error = ((projected_points[nonzer] - points_2D_gt[nonzer]) ** 2).sum(dim=1)
+            proj_error_filtered = proj_error[inliers]
+        else:
+            projected_points_3D = padded_points @ R + T
 
+            # Plot point distants for first image
+            # distances = (projected_points_3D[0] - relative_points_gt[0]).norm(dim=-1).detach().cpu().numpy()
+            # from matplotlib import pyplot as plt
+            # plt.plot(distances[:(visibility[0]).sum()])
+
+            # Different loss functions for reprojection error minimization
+            # points_distance = smooth_l1_loss(projected_points, points_2D_gt)
+            # points_distance = (smooth_l1_loss(projected_points, points_2D_gt, reduction='none')[nonzer]).sum(dim=1)
+            proj_error = ((projected_points_3D[nonzer] - relative_points_gt[nonzer]) ** 2).sum(dim=1)
+            proj_error_filtered = proj_error[inliers]
+
+        loss = proj_error_filtered.mean() + chamfer_weight * chamfer_dist
         loss.backward()
-        # print("faulty elements :")
-        # faulty_points = torch.arange(points_absolute.shape[0])[points_absolute.grad[:, 0] != points_absolute.grad[:, 0]]
-        # # faulty_images = torch.arange(log_R_absolute.shape[0])[log_R_absolute.grad[:, 0] != log_R_absolute.grad[:, 0]]
-        # faulty_cams = torch.arange(cams_params.shape[0])[cams_params.grad[:, 0] != cams_params.grad[:, 0]]
-        # print(torch.isnan(projected_points.grad).any(dim=2))
-        # print(projected_points.grad.shape)
-        # faulty_projected_points = torch.arange(projected_points.shape[1])[torch.isnan(projected_points.grad).any(dim=2)[0]]
-        # # print(log_R_absolute[faulty_images])
-        # # print(T_absolute[faulty_images])
-        # print(points_gt[faulty_points])
-        # print(cams_params[faulty_cams])
-        # print(projected_points[torch.isnan(projected_points.grad)])
-        # first_faulty_point = points_df.iloc[int(faulty_points[0])]
-        # faulty_images = images_df.loc[first_faulty_point["image_ids"][0]]
-        # print(first_faulty_point)
-        # print(faulty_images)
+
+        if verbose:
+            print("faulty elements (with nan grad) :")
+            faulty_points = torch.arange(points.shape[0])[points.grad[:, 0] != points.grad[:, 0]]
+            faulty_images = torch.arange(log_R.shape[0])[log_R.grad[:, 0] != log_R.grad[:, 0]]
+            faulty_cams = torch.arange(cams_params.shape[0])[cams_params.grad[:, 0] != cams_params.grad[:, 0]]
+            faulty_projected_points = torch.arange(projected_points.shape[1])[torch.isnan(projected_points.grad).any(dim=2)[0]]
+
+            # Print Tensor that would become NaN, should the gradient be applied
+            print("Faulty Rotation (log) and translation")
+            print(faulty_images)
+            print(log_R[faulty_images])
+            print(T[faulty_images])
+            print("Faulty 3D colmap points")
+            print(faulty_points)
+            print(points[faulty_points])
+            print("Faulty Cameras")
+            print(faulty_cams)
+            print(cams_params[faulty_cams])
+            print("Faulty 2D points")
+            print(projected_points[faulty_projected_points])
+            first_faulty_point = points_df.iloc[int(faulty_points[0])]
+            related_faulty_images = images_df.loc[first_faulty_point["image_ids"][0]]
+
+            print("First faulty point, and images where it is seen")
+            print(first_faulty_point)
+            print(related_faulty_images)
 
         # apply the gradients
         optimizer.step()
@@ -276,25 +308,27 @@ def main(args):
         # plot and print status message
         if it % 2000 == 0 or it == n_iter-1:
             camera_distance = calc_camera_distance(cameras_absolute, cameras_absolute_gt)
-            points_3d_distance = (points_gt - points_absolute).norm(dim=-1).mean()
-            print('iteration=%3d; loss=%1.3e, points_distance=%1.3e, camera_distance=%1.3e' % (it, loss, points_3d_distance, camera_distance))
+            print('iteration = {}; loss = {}, chamfer distance = {}, camera_distance = {}'.format(it,
+                                                                                                  loss,
+                                                                                                  chamfer_distance,
+                                                                                                  camera_distance))
             loss_log.append(loss.item())
-            pts_dist_log.append(points_3d_distance.item())
+            pts_dist_log.append(chamfer_distance.item())
             cam_dist_log.append(camera_distance.item())
-        if it % 20000 == 0 or it == n_iter-1:
+        if it % 20000 == 0 or it == n_iter - 1:
             with torch.no_grad():
                 from matplotlib import pyplot as plt
-                plt.hist(torch.sqrt(points_distance_filtered).detach().cpu().numpy())
+                plt.hist(torch.sqrt(proj_error_filtered).detach().cpu().numpy())
         if it % 200000 == 0 or it == n_iter-1:
             plt.figure()
             plt.plot(loss_log)
             plt.figure()
-            plt.plot(pts_dist_log, label="pts_dist")
+            plt.plot(pts_dist_log, label="chamfer_dist")
             plt.plot(cam_dist_log, label="cam_dist")
             plt.legend()
             plot_camera_scene(cameras_absolute, cameras_absolute_gt,
-                              points_absolute, points_gt,
-                              'iteration=%3d; points_distance=%1.3e' % (it, points_3d_distance))
+                              points, ref_pointcloud,
+                              'iteration={}; chamfer distance={}'.format(it, chamfer_distance))
 
     print('Optimization finished.')
 
