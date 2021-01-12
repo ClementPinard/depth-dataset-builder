@@ -2,7 +2,7 @@ import numpy as np
 from path import Path
 
 from cli_utils import print_step
-from colmap_util.read_model import read_images_text, read_images_binary
+import colmap_util.read_model as rm
 from filter_colmap_model import filter_colmap_model
 import pandas as pd
 import add_video_to_db as avtd
@@ -10,11 +10,12 @@ import extract_pictures_from_model as epfm
 import convert_dataset as cd
 import generate_sky_masks as gsm
 import meshlab_xml_writer as mxw
+import resiz_colmap_cameras as rcc
 
 
 def is_video_in_model(video_name, colmap_model, metadata):
 
-    mapped_images_ids = read_images_binary(colmap_model/"images.bin").keys()
+    mapped_images_ids = rm.read_images_binary(colmap_model/"images.bin").keys()
     video_image_ids = metadata["db_id"]
     return sum(video_image_ids.isin(mapped_images_ids)) > 0
 
@@ -189,6 +190,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                 viz_folder, kitti_format_folder, metadata_path, interpolated_frames_list,
                 final_model, aligned_mlp, global_registration_matrix,
                 occlusion_ply, splats_ply,
+                output_rescale, output_width,
                 eth3d, colmap, filter_models=True,
                 step_index=None, video_index=None, num_videos=None, GT_already_done=False,
                 save_space=False, inspect_dataset=False, **env):
@@ -213,7 +215,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
 
     print("Creating GT on video {} [{}/{}]".format(video_name.basename(), video_index, num_videos))
     i_pv = 1
-    metadata = pd.read_csv(metadata_path)
+    metadata = pd.read_csv(metadata_path).set_index("db_id", drop=False).sort_values("time")
     if filter_models:
         print_step_pv(i_pv, "Filtering model to have continuous localization")
         interpolated_frames = filter_colmap_model(input_images_colmap=final_model / "images_raw.txt",
@@ -226,7 +228,13 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         (final_model / "images_raw.txt").copy(final_model / "images.txt")
         interpolated_frames = []
 
-    model_length = len(read_images_text(final_model / "images.txt"))
+    (final_model / "cameras.txt").copy(final_model / "cameras_raw.txt")
+    rcc.resize_cameras(input_cameras=final_model / "cameras_raw.txt",
+                       output_cameras=final_model / "cameras.txt",
+                       output_width=output_width,
+                       output_rescale=output_rescale)
+
+    model_length = len(rm.read_images_text(final_model / "images.txt"))
     if model_length < 2:
         return
 
