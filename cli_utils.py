@@ -139,7 +139,7 @@ def add_gt_options(parser):
     im_size = gt_parser.add_mutually_exclusive_group()
     im_size.add_argument('--output_rescale', type=float, default=1,
                          help='Rescale images for depth ground truth')
-    im_size.add_argument('--output_width', type=float, default=None,
+    im_size.add_argument('--output_width', type=int, default=None,
                          help='width of output images and depth maps')
 
 

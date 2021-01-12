@@ -176,6 +176,7 @@ def localize_video(video_name, video_frames_folder, thorough_db, metadata_path, 
                                          max_distance=10)
 
     (final_model / "images.txt").rename(final_model / "images_raw.txt")
+    (final_model / "cameras.txt").rename(final_model / "cameras_raw.txt")
 
     output_env["video_frames_folder"].makedirs_p()
     video_frames_folder.merge_tree(output_env["video_frames_folder"])
@@ -228,7 +229,6 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         (final_model / "images_raw.txt").copy(final_model / "images.txt")
         interpolated_frames = []
 
-    (final_model / "cameras.txt").copy(final_model / "cameras_raw.txt")
     rcc.resize_cameras(input_cameras=final_model / "cameras_raw.txt",
                        output_cameras=final_model / "cameras.txt",
                        output_width=output_width,

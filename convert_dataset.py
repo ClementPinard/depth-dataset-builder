@@ -22,6 +22,8 @@ def rescale_and_save_cameras(cameras, images, output_dir, output_width=None, dow
             current_downscale = output_width / cam.width
         else:
             current_downscale = downscale
+        if current_downscale == 1:
+            return cam
         if 'SIMPLE' in cam.model or 'RADIAL' in cam.model:
             cam.params[:3] /= current_downscale
         else:
@@ -143,7 +145,7 @@ def apply_cmap_and_resize(depth, colormap, downscale):
     return downscale_depth, depth_viz*255
 
 
-def process_one_frame(img_path, depth_path, occ_path,
+def process_one_frame(img_path, depth_path, occ_path, depth_shape,
                       dataset_output_dir, video_output_dir, downscale, interpolated,
                       visualization=False, viz_width=1920, compressed=True):
     img = imread(img_path)
@@ -155,7 +157,8 @@ def process_one_frame(img_path, depth_path, occ_path,
     assert(viz_width % 2 == 0)
     viz_height = int(viz_width * h / (2*w)) * 2
     output_img = np.zeros((viz_height, viz_width, 3), dtype=np.uint8)
-    rescaled_img = rescale(img, 1/downscale, multichannel=True)*255
+    resized_img = rescale(img, depth_shape)
+    rescaled_img = rescale(resized_img, 1/downscale, multichannel=True)*255
     imwrite(dataset_output_dir / img_path.basename(), rescaled_img.astype(np.uint8))
 
     if visualization:
@@ -164,7 +167,7 @@ def process_one_frame(img_path, depth_path, occ_path,
         output_img[:viz_height//2, :viz_width//2] = viz_img
     if depth_path is not None:
         with gzip.open(depth_path, "rb") if compressed else open(depth_path, "rb") as f:
-            depth = np.frombuffer(f.read(), np.float32).reshape(h, w)
+            depth = np.frombuffer(f.read(), np.float32).reshape(depth_shape)
         output_depth_name = dataset_output_dir / img_path.stem + '.npy'
         downscaled_depth, viz = apply_cmap_and_resize(depth, 'rainbow', downscale)
         if not interpolated:
@@ -258,6 +261,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
     interpolated = []
     imgs = []
     registered = []
+    depth_shapes = []
 
     for i in images_list:
         img_path = images_root_folder / i
@@ -277,6 +281,8 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
             else:
                 occ_maps.append(None)
             depth_maps.append(depth_path)
+            camera = cameras_colmap[images_colmap[i].camera_id]
+            depth_shapes.append(camera.height, camera.width)
             if i in interpolated_frames:
                 if verbose > 2:
                     print("Image {} was interpolated".format(fname))
@@ -297,11 +303,11 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
                                                        len(images_list),
                                                        100*sum(interpolated)/len(images_list)))
     if threads == 1:
-        for i, d, o, n in tqdm(zip(imgs, depth_maps, occ_maps, interpolated), total=len(imgs)):
-            process_one_frame(i, d, o, dataset_output_dir, video_output_dir, downscale, n, visualization, viz_width=1920)
+        for i, d, o, ds, n in tqdm(zip(imgs, depth_maps, occ_maps, depth_shapes, interpolated), total=len(imgs)):
+            process_one_frame(i, d, o, ds, dataset_output_dir, video_output_dir, downscale, n, visualization, viz_width=1920)
     else:
         with ProcessPool(max_workers=threads) as pool:
-            tasks = pool.map(process_one_frame, imgs, depth_maps, occ_maps,
+            tasks = pool.map(process_one_frame, imgs, depth_maps, occ_maps, depth_shapes,
                              [dataset_output_dir]*len(imgs), [video_output_dir]*len(imgs),
                              [downscale]*len(imgs), interpolated,
                              [visualization]*len(imgs), [1920]*len(imgs))
