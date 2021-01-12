@@ -295,7 +295,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                        raw_output_folder / "occlusion_depth" / video_name.stem,
                        kitti_format_folder, viz_folder,
                        metadata=metadata, interpolated_frames=interpolated_frames,
-                       visualization=True, video=True, downscale=4, threads=8, **env)
+                       visualization=True, video=True, downscale=1, threads=8, **env)
     if filter_models:
         interpolated_frames_list.copy(kitti_format_folder)
     if save_space:
@@ -357,6 +357,6 @@ def generate_GT_individual_pictures(colmap_img_root, individual_pictures_list, r
                        occlusion_depth_folder,
                        kitti_format_folder, viz_folder,
                        images_list=individual_pictures_list,
-                       visualization=True, video=False, downscale=4, threads=8, **env)
+                       visualization=True, video=False, downscale=1, threads=8, **env)
     if save_space:
         (raw_output_folder / "occlusion_depth" / "individual_pictures").rmtree_p()
