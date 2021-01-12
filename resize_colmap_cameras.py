@@ -30,8 +30,9 @@ def resize_cameras(input_cameras, output_cameras, output_width=None, output_resc
     for i, c in cameras.items():
         if output_width is not None:
             output_rescale = output_width / c.width
-        output_width = c.width * output_rescale
-        output_height = c.height * output_rescale
+        else:
+            output_width = int(c.width * output_rescale)
+        output_height = int(c.height * output_rescale)
         output_params = c.params
         single_focal = ('SIMPLE' in c.model) or ('RADIAL' in c.model)
         output_params[:3] *= output_rescale
