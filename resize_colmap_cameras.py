@@ -21,9 +21,9 @@ im_resize.add_argument('-r', '--rescale', type=float, default=1,
 
 def resize_cameras(input_cameras, output_cameras, output_width=None, output_rescale=1):
     if input_cameras.ext == ".txt":
-        cameras = rm.read_images_text(input_cameras)
+        cameras = rm.read_cameras_text(input_cameras)
     elif input_cameras.ext == ".bin":
-        cameras = rm.read_images_binary(input_cameras)
+        cameras = rm.read_cameras_binary(input_cameras)
     else:
         print(input_cameras.ext)
     cameras_rescaled = {}

@@ -10,7 +10,7 @@ import extract_pictures_from_model as epfm
 import convert_dataset as cd
 import generate_sky_masks as gsm
 import meshlab_xml_writer as mxw
-import resiz_colmap_cameras as rcc
+import resize_colmap_cameras as rcc
 
 
 def is_video_in_model(video_name, colmap_model, metadata):

@@ -136,7 +136,7 @@ def add_gt_options(parser):
                            help='max depth for occlusion. Everything further will not be considered at infinity')
     gt_parser.add_argument('--eth3d_splat_radius', default=0.01, type=float,
                            help='see splat radius for ETH3D')
-    im_size = parser.add_mutually_exclusive_group()
+    im_size = gt_parser.add_mutually_exclusive_group()
     im_size.add_argument('--output_rescale', type=float, default=1,
                          help='Rescale images for depth ground truth')
     im_size.add_argument('--output_width', type=float, default=None,
