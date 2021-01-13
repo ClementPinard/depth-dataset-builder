@@ -296,6 +296,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
             depth_maps.append(None)
             occ_maps.append(None)
             interpolated.append(False)
+            depth_shapes.append(None)
     print('{}/{} Frames not registered ({:.2f}%)'.format(len(images_list) - sum(registered),
                                                          len(images_list),
                                                          100*(1 - sum(registered)/len(images_list))))
