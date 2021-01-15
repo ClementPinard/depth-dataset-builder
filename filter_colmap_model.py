@@ -13,7 +13,7 @@ parser = ArgumentParser(description='Filter COLMAP model of a single video by di
 
 parser.add_argument('--input_images_colmap', metavar='FILE', type=Path, required=True,
                     help='Input COLMAP images.bin or images.txt file to filter.')
-parser.add_argument('--metadata', metavar='FILE', type=Path, required=True,
+parser.add_argument('--metadata_path', metavar='FILE', type=Path, required=True,
                     help='Metadata CSV file of filtered video')
 parser.add_argument('--output_images_colmap', metavar='FILE', type=Path, required=True,
                     help='Output images.bin or images.txt file with filtered frame localizations')
@@ -291,7 +291,7 @@ def filter_colmap_model(input_images_colmap, output_images_colmap, metadata,
 if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
-    metadata = pd.read_csv(args.metadata).set_index("db_id", drop=False).sort_values("time")
+    metadata = pd.read_csv(args.metadata_path).set_index("db_id", drop=False).sort_values("time")
     interpolated_frames = filter_colmap_model(metadata=metadata, **env)
     with open(args.interpolated_frames_list, "w") as f:
         f.write("\n".join(interpolated_frames) + "\n")
