@@ -90,7 +90,7 @@ def main():
     else:
         mask = None
     for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
-        GT = np.load(args.dataset_root/filepath + '.npy')
+        GT = np.load((args.dataset_root/filepath).stripext() + '.npy')
         new_values = get_values(GT, estimated_depth[filepath], fpv,
                                 args.scale_invariant, mask,
                                 args.min_depth, args.max_depth)

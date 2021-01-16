@@ -252,11 +252,13 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
         mxw.apply_transform_to_project(aligned_mlp, final_mlp, adjustment_matrix)
         mxw.create_project(final_occlusions, [occlusion_ply], transforms=[adjustment_matrix])
         mxw.create_project(final_splats, [splats_ply], transforms=[adjustment_matrix])
+        pose_scale = np.linalg.norm(adjustment_matrix[:, :3], 2)
 
     else:
         final_mlp = aligned_mlp
         final_occlusions = occlusion_ply
         final_splats = splats_ply
+        pose_scale = np.linalg.norm(global_registration_matrix[:, :3], 2)
 
     if inspect_dataset:
         eth3d.image_path = images_root_folder
@@ -293,7 +295,7 @@ def generate_GT(video_name, raw_output_folder, images_root_folder, video_frames_
                        raw_output_folder / "ground_truth_depth" / video_name.stem,
                        images_root_folder,
                        raw_output_folder / "occlusion_depth" / video_name.stem,
-                       kitti_format_folder, viz_folder,
+                       kitti_format_folder, viz_folder, pose_scale=pose_scale,
                        metadata=metadata, interpolated_frames=interpolated_frames,
                        visualization=True, video=True, downscale=1, threads=8, **env)
     if filter_models:

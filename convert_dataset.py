@@ -38,6 +38,8 @@ parser.add_argument('--downscale', type=int, default=1, help='How much ground tr
 parser.add_argument('--threads', '-j', type=int, default=8, help='')
 parser.add_argument('--compressed', action='store_true',
                     help='Indicates if GroundTruthCreator was used with option `--compress_depth_maps`')
+parser.add_argument('--reg_mat', type=Path, default=None,
+                    help='registration matrix that was used for lidar point cloud registration')
 parser.add_argument('--verbose', '-v', action='count', default=0)
 
 
@@ -100,20 +102,20 @@ def rescale_and_save_cameras(cameras, images, output_dir, output_width=None, dow
     return rescaled_cameras
 
 
-def to_transform_matrix(q, t):
+def to_transform_matrix(q, t, scale=1):
     cam_R = rm.qvec2rotmat(q).T
-    cam_t = (- cam_R @ t).reshape(3, 1)
+    cam_t = (- cam_R @ t).reshape(3, 1) * scale
     transform = np.vstack((np.hstack([cam_R, cam_t]), [0, 0, 0, 1]))
     return transform
 
 
-def save_poses(images, images_list, output_dir):
+def save_poses(images, images_list, output_dir, scale):
     starting_pos = None
     poses = []
     for i in images_list:
         try:
             img = images[i]
-            current_pos = to_transform_matrix(img.qvec, img.tvec)
+            current_pos = to_transform_matrix(img.qvec, img.tvec, scale)
             if starting_pos is None:
                 starting_pos = current_pos
             relative_position = np.linalg.inv(starting_pos) @ current_pos
@@ -222,7 +224,7 @@ def process_one_frame(img_path, depth_path, occ_path, depth_shape,
 
 
 def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
-                    dataset_output_dir, video_output_dir, ffmpeg,
+                    dataset_output_dir, video_output_dir, ffmpeg, pose_scale=1,
                     interpolated_frames=[], metadata=None, images_list=None,
                     threads=8, downscale=None, compressed=True,
                     width=None, visualization=False, video=False, verbose=0, **env):
@@ -254,7 +256,7 @@ def convert_dataset(final_model, depth_dir, images_root_folder, occ_dir,
                                                 images_colmap,
                                                 dataset_output_dir,
                                                 width, downscale)
-    poses = save_poses(images_colmap, images_list, dataset_output_dir)
+    poses = save_poses(images_colmap, images_list, dataset_output_dir, pose_scale)
 
     depth_maps = []
     occ_maps = []
@@ -363,10 +365,17 @@ if __name__ == '__main__':
     args = parser.parse_args()
     env = vars(args)
     env["metadata"] = pd.read_csv(env["metadata_path"])
+    if args.reg_mat is not None:
+        registration_matrix = np.genfromtxt(args.reg_mat)
+        # If registration matrix is not a true rotation, it means the frame positions
+        # need to be rescaled
+        reg_scale = 1/np.linalg.norm(registration_matrix[:, :3], 2)
+    else:
+        reg_scale = 1
     if args.interpolated_frames_path is None:
         env["interpolated_frames"] = []
     else:
         with open(args.interpolated_frames_path, "r") as f:
             env["interpolated_frames"] = [line[:-1] for line in f.readlines()]
     env["ffmpeg"] = FFMpeg()
-    convert_dataset(**env)
+    convert_dataset(pose_scale=reg_scale, **env)

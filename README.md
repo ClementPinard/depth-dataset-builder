@@ -1062,6 +1062,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --images_root_folder Raw_output_directory/COLMAP_img_root \
     --occ_dir Raw_output_directory/occlusion_depth/{video name} \
     --metadata_path video_folder/metadata.csv \
+    --reg_matrix workspace/matrix_thorough.txt \
     --dataset_output_dir Converted_output_directory/dataset/ \
     --video_output_dir Converted_output_directory/visualization/ \
     --interpolated_frames_list video_workspace/interpolated_frames.txt \
@@ -1071,7 +1072,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --threads 8
     ```
 
-    This will create a dataset at the folder `Converted_output_directory/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file. See [Output directories](#output/directories).
+    This will create a dataset at the folder `Converted_output_directory/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file. See [Output directories](#output/directories). The registration matrix is given so that we can scale the poses accordingly : if the registration matrix is not a pure rotation, knowing that the lidar point cloud has the right, it means that the COLMAP needs to be rescaled, and so do the poses.
 
 17. Evaluation list creation
     
@@ -1090,6 +1091,24 @@ This will essentially do the same thing as the script, in order to let you chang
     this will try to select at most 500 frames (`--max_num_samples 500`) such that 90% (`--split 0.9`) of folders are kept as training folders, and every frame has at least 50 frames with valid odometry before (`--min_shift 50`). Interpolated frames are allowed for odometry to be considered valid (but not for depth ground truth) (`--allow_interpolated_frames`)
 
     It will create a txt file with test file paths (`/path/to/dataset/test_files.txt`), a txt file with train folders (`/path/to/dataset/train_folders.txt`) and lastly a txt file with flight path vector coordinates (in pixels) (`/path/to/dataset/fpv.txt`)
+
+18. Training dataset creation
+
+    In the case you want to run a auto-supervised training on the frames, you can filter the frames with a dedicated script that will make that the camera is actually moving, and not only rotating.
+
+    ```
+    python split_dataset.py \
+    --min_displacement 0.1 \
+    --dataset_dir Converted_output_directory/dataset/ \
+    --output_dir train_folder \
+    --scenes_list Converted_output_directory/train_folders.txt \
+    --max_rotation 1 \
+    --min_num_frames 5 \
+    --train_split 0.9
+    ```
+
+    This will discard frames with too little displacement and too much rotation, and divide the scene in folders containg consecutive frames that respect the minimum displacement and maximum rotation between frames.
+    The train folder can be directly used for training by e.g. [SfmLearner](https://github.com/ClementPinard/SfmLearner-Pytorch/tree/validation_set_constructor) or [Unsupervised DepthNet](https://github.com/ClementPinard/unsupervised-depthnet/tree/validation_set_construction). Notice that there are dedicated branchs to run an inference script that will make use of the evaluation toolkit.
 
 
 ### Special case : Adding new images to an existing dataset
