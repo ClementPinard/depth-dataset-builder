@@ -413,6 +413,8 @@ All the parameters for `main_pipeline.py` are defined in the file `cli_utils.ply
 
 7. Ground truth creation
     * `--eth3d_splat_radius` : Splat radius for occlusion mesh boundaries, radius of area (in meters) which will be defined as invalid because of occlusion uncertainty, see `splat_radius` option for ETH3D. Thumb rule here is that it should be around your point cloud precision. (default 0.01, i.e. 1cm)
+    * `--output_rescale` : rescale cameras before creating groundtruth maps (typically, a value between 0 and 1 to save space)
+    * `--output_width` : rescale cameras so that their width match a given value. Note that contrary to the former option, this one ensures that all images will have the same width, and the same height if they share the same ratio (useful, if you want to evaluate a depth algorithm that has a fixed image size)
 
 **Tip** : As a lot of log information will go through your terminal, you can use `-vv` and `--log out.log` in order to have two terminals with different verbose levels.
 
@@ -1010,9 +1012,25 @@ This will essentially do the same thing as the script, in order to let you chang
     --interpolated_frames_list video_workspace/interpolated_frames.txt
     ```
 
-15. Raw Groundtruth generation
+15. Cameras resizing (optional)
+
+    In the case you don't need the full size depth maps, you can change the colmap camera file that stores image calibration information.
+
+    `video_folder` and `video_workspace` are placeholders following the same convention as in step 14.
+
+    ```
+    cp video_workspace/final_model/cameras.txt video_workspace/final_model/cameras_raw.txt
+    python resize_colmap_cameras.py \
+    --input_cameras_colmap video_workspace/final_model/cameras.txt \
+    --output_cameras_colmap video_workspace/final_model/cameras.txt \
+    --width 416
+    ```
+
+    In this example, each cameras stored in the `cameras.txt` fille will be rescaled (and the parameters changed accordingly) so that the width is now 416 pixels, with the same ratio a before.
+
+16. Raw Groundtruth generation
     
-    `video_folder` and `video_workspace` are placeholders following the same convention as in step 13.
+    `video_folder` and `video_workspace` are placeholders following the same convention as in step 14.
 
     For each video :
 
@@ -1050,7 +1068,7 @@ This will essentially do the same thing as the script, in order to let you chang
     --max_occlusion_depth 200
     ```
 
-16. Dataset conversion
+17. Dataset conversion
 
     `video_folder` and `video_workspace` are placeholders following the same convention as in step 13.
 
@@ -1074,7 +1092,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     This will create a dataset at the folder `Converted_output_directory/dataset/` with images, depth maps in npy format, camera intrinsics and distortion in txt and yaml, pose information in the same format as KITTI odometry, and relevant metadata stored in a csv file. See [Output directories](#output/directories). The registration matrix is given so that we can scale the poses accordingly : if the registration matrix is not a pure rotation, knowing that the lidar point cloud has the right, it means that the COLMAP needs to be rescaled, and so do the poses.
 
-17. Evaluation list creation
+18. Evaluation list creation
     
     Once everything is constructed, you can specify a subset of e.g. 500 frames for evaluaton.
 
@@ -1092,7 +1110,7 @@ This will essentially do the same thing as the script, in order to let you chang
 
     It will create a txt file with test file paths (`/path/to/dataset/test_files.txt`), a txt file with train folders (`/path/to/dataset/train_folders.txt`) and lastly a txt file with flight path vector coordinates (in pixels) (`/path/to/dataset/fpv.txt`)
 
-18. Training dataset creation
+19. Training dataset creation
 
     In the case you want to run a auto-supervised training on the frames, you can filter the frames with a dedicated script that will make that the camera is actually moving, and not only rotating.
 
