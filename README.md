@@ -1,4 +1,6 @@
-# Photogrammetry and georegistration tools for Parrot drone videos
+# Rigid Depth Constructor
+
+![h](images/result1.jpg)![h](images/result2.jpg)
 
 This is a set of python scripts  and c++ programs used to construct a depth validation set with a Lidar generated point cloud.
 For a brief recap of what it does, see section [How it works](#how-it-works)
@@ -27,7 +29,7 @@ For a brief recap of what it does, see section [How it works](#how-it-works)
 docker build . -t my_image
 ```
 
-These are the used tools, make sure to install them before running the scripts.
+These are the used tools, make sure to install them before running the scripts. Apart from CUDA, which you need to install by yourself, you can use the help script `install_dependencies.sh` to install them on ubuntu 20.04.
 
  - [CUDA](https://developer.nvidia.com/cuda-downloads) (version : 10+)
  - [OpenCV](https://opencv.org/) (version, 4.0.0+)
@@ -36,7 +38,6 @@ These are the used tools, make sure to install them before running the scripts.
  - [COLMAP](https://colmap.github.io/) (version : master)
  - [PDrAW from AnafiSDK](https://developer.parrot.com/docs/pdraw/) (version : master)
 
-Apart from CUDA, which you need to install by yourself, you can use the help script `install_dependencies.sh` to install them on ubuntu 20.04.
 
 For PDrAW, there should be a `native-wrapper.sh` file that you to keep a track of. It's usually in `groundsdk/out/pdraw-linux/staging/native-wrapper.sh`(see [here](https://developer.parrot.com/docs/pdraw/installation.html))
 
