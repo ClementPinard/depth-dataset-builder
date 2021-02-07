@@ -1278,5 +1278,4 @@ Graphs :
 ## Dataset homogeneization
 
 - Apply rectification on the whole dataset to only have pinhole cameras in the end
-- Resize all frames to have the exact same width, height, and intrinsics for particular algorithm that are trained on a specific set of intrinsics (see DepthNet)
-- Divide videos into sequential subparts so that each folder will contain subsequent frames with valid absolute pose and depth
+- Resize and warp all frames to have the exact same width, height, and intrinsics for particular algorithm that are trained on a specific set of intrinsics (see DepthNet)
