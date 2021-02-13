@@ -32,7 +32,7 @@ parser.add_argument('--seed', type=int, default=0)
 
 
 def sample_splits(sequence, min_displacement, max_rot, min_num_frames):
-    def matrix(row):
+    def get_rotation(row):
         flat_matrix = row[["pose00", "pose01", "pose02",
                            "pose10", "pose11", "pose12",
                            "pose20", "pose21", "pose22"]].values
@@ -43,7 +43,7 @@ def sample_splits(sequence, min_displacement, max_rot, min_num_frames):
     last_intrinsics = None
     for k in sample_frames(sequence, min_displacement):
         row = sequence.iloc[k]
-        current_rot = matrix(row)
+        current_rot = get_rotation(row)
         current_intrinsics = row[["fx", "fy", "cx", "cy"]].values.astype(float)
         if last_rot is not None:
             rot_diff_mag = (current_rot.inv() * last_rot).magnitude()
@@ -70,10 +70,11 @@ def sample_frames(sequence, min_displacement):
     origin = tvec[0]
     current_disp = 0
     for j, pos in enumerate(tvec):
+        current_disp = np.linalg.norm(pos - origin)
         if current_disp > min_displacement:
             yield j
             origin = pos
-        current_disp = np.linalg.norm(pos - origin)
+
 
 
 def get_min_depth(row):
