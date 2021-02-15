@@ -92,7 +92,7 @@ def get_values(
             np.meshgrid(np.arange(gt_depth.shape[1]), np.arange(gt_depth.shape[0])), axis=-1
         )
 
-    #TODO : For now, fpv distance is given in pixel distance.
+    # TODO : For now, fpv distance is given in pixel distance.
     # A more accurate way would be to use angular distance.
     fpv_dist = np.linalg.norm(coords - fpv, axis=-1)
     estim_depth = np.clip(estim_depth, min_depth, max_depth)
@@ -186,28 +186,62 @@ def main():
     values_df = pd.concat(values_df)
 
     # Additional values to the Dataframe
-    # Note that no mean is computed here, each row in the dataframe is ONE pixel
+    # Note that no mean is computed here, each row in the dataframe is ONE pixel
     # The dataframe is thus potentially thousands rows long
     values_df["log_GT"] = np.log(values_df["GT"])
     values_df["log_estim"] = np.log(values_df["estim"])
     values_df["diff"] = values_df["estim"] - values_df["GT"]
     values_df["absdiff"] = values_df["diff"].abs()
+    values_df["absdiff2"] = np.power(values_df["diff"], 2)
     values_df["reldiff"] = values_df["absdiff"] / values_df["GT"]
+    values_df["reldiff2"] = np.power(values_df["reldiff"], 2)
     values_df["logdiff"] = values_df["log_estim"] - values_df["log_GT"]
+    values_df["logdiff2"] = np.power(values_df["absdiff"], 2)
     values_df["abslogdiff"] = values_df["logdiff"].abs()
+    values_df["a1"] = (values_df["abslogdiff"] < np.log(1.25)).astype(float)
+    values_df["a2"] = (values_df["abslogdiff"] < 2 * np.log(1.25)).astype(float)
+    values_df["a3"] = (values_df["abslogdiff"] < 3 * np.log(1.25)).astype(float)
 
     # Compute mean erros, a la Eigen et al.
     error_names = ["AbsDiff", "StdDiff", "AbsRel", "StdRel", "AbsLog", "StdLog", "a1", "a2", "a3"]
     errors = [
         values_df["absdiff"].mean(),
-        np.sqrt(np.power(values_df["diff"], 2).mean()),
+        np.sqrt(values_df["absdiff2"].mean()),
         values_df["reldiff"].mean(),
-        np.sqrt(np.power(values_df["reldiff"], 2).mean()),
+        np.sqrt(values_df["reldiff2"].mean()),
         values_df["abslogdiff"].mean(),
-        np.sqrt(np.power(values_df["logdiff"], 2).mean()),
-        sum(values_df["abslogdiff"] < np.log(1.25)) / len(values_df),
-        sum(values_df["abslogdiff"] < 2 * np.log(1.25)) / len(values_df),
-        sum(values_df["abslogdiff"] < 3 * np.log(1.25)) / len(values_df),
+        np.sqrt(values_df["logdiff2"].mean()),
+        values_df["a1"].mean(),
+        values_df["a2"].mean(),
+        values_df["a3"].mean(),
+    ]
+
+    # Get mean values per ground truth values, and then mean them
+    # This way, we have the same weight for each ground truth value
+    values_df_per_gt = values_df.groupby(by=np.round(values_df["GT"])).mean()
+    weighted_errors = [
+        values_df_per_gt["absdiff"].mean(),
+        np.sqrt(values_df_per_gt["absdiff2"].mean()),
+        values_df_per_gt["reldiff"].mean(),
+        np.sqrt(values_df_per_gt["reldiff2"].mean()),
+        values_df_per_gt["abslogdiff"].mean(),
+        np.sqrt(values_df_per_gt["logdiff2"].mean()),
+        values_df_per_gt["a1"].mean(),
+        values_df_per_gt["a2"].mean(),
+        values_df_per_gt["a3"].mean(),
+    ]
+
+    values_df_per_log_gt = values_df.groupby(by=0.1 * np.round(10 * values_df["log_GT"])).mean()
+    weighted_errors_log = [
+        values_df_per_log_gt["absdiff"].mean(),
+        np.sqrt(values_df_per_log_gt["absdiff2"].mean()),
+        values_df_per_log_gt["reldiff"].mean(),
+        np.sqrt(values_df_per_log_gt["reldiff2"].mean()),
+        values_df_per_log_gt["abslogdiff"].mean(),
+        np.sqrt(values_df_per_log_gt["logdiff2"].mean()),
+        values_df_per_log_gt["a1"].mean(),
+        values_df_per_log_gt["a2"].mean(),
+        values_df_per_log_gt["a3"].mean(),
     ]
 
     # Print the results
@@ -221,6 +255,30 @@ def main():
     print(
         "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(
             *errors
+        )
+    )
+
+    print("Results for usual metrics, weighted by inverse of GT frequencies")
+    print(
+        "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(
+            *error_names
+        )
+    )
+    print(
+        "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(
+            *weighted_errors
+        )
+    )
+
+    print("Results for usual metrics, weighted by inverse of log GT frequencies")
+    print(
+        "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(
+            *error_names
+        )
+    )
+    print(
+        "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(
+            *weighted_errors_log
         )
     )
 
@@ -258,7 +316,6 @@ def main():
         global_diff = np.histogram(values_df["estim"] - values_df["GT"], bins=100)
         global_log_diff = np.histogram(values_df["log_estim"] - values_df["log_GT"], bins=100)
 
-
         # Depth error per pixel
         # Useful to identify if a region in the screen is particualrly faulty.
         # Can help spot dataset inconsistency (eg sky is always in the same place)
@@ -279,8 +336,7 @@ def main():
             values_df[values_df["fpv_dist"] < 1000], "fpv_dist", ["absdiff", "abslogdiff"]
         )
         quantiles_per_gt = group_quantiles(values_df, "GT", ["absdiff", "abslogdiff"])
-
-        # metric_per_gt = values_df.groupby(by = np.round(values_df["GT"]))
+        quantiles_per_estimation = group_quantiles(values_df, "estim", ["absdiff", "abslogdiff"])
 
         # PLOTTING
 
@@ -347,13 +403,32 @@ def main():
             index, diff_per_gt[0.25], diff_per_gt[0.75], color="cyan", label="25% - 75%"
         )
         axes[0].plot(diff_per_gt[0.5], label="median")
-        axes[0].set_title("Error wrt to distance to groundtruth depth")
+        axes[0].set_title("Error wrt to groundtruth depth")
         axes[1].fill_between(
             index, logdiff_per_gt[0.25], logdiff_per_gt[0.75], color="cyan", label="25% - 75%"
         )
         axes[1].plot(logdiff_per_gt[0.5], label="median")
         axes[1].set_title("Log error wrt to groundtruth depth")
-        axes[1].set_xlabel("Groundtruth depth (in meters)")
+        axes[1].set_xlabel("Estimated depth (in meters)")
+        plt.tight_layout()
+
+        # Last plot, error with respect to estimated depth
+
+        fig, axes = plt.subplots(2, 1, sharex=True)
+        index = quantiles_per_estimation.index
+        diff_per_est = quantiles_per_estimation["absdiff"]
+        logdiff_per_est = quantiles_per_estimation["abslogdiff"]
+        axes[0].fill_between(
+            index, diff_per_est[0.25], diff_per_est[0.75], color="cyan", label="25% - 75%"
+        )
+        axes[0].plot(diff_per_est[0.5], label="median")
+        axes[0].set_title("Error wrt to estimated depth")
+        axes[1].fill_between(
+            index, logdiff_per_est[0.25], logdiff_per_est[0.75], color="cyan", label="25% - 75%"
+        )
+        axes[1].plot(logdiff_per_est[0.5], label="median")
+        axes[1].set_title("Log error wrt to estimated depth")
+        axes[1].set_xlabel("Estimated depth (in meters)")
         plt.tight_layout()
 
         # Last plot, pixelwise error

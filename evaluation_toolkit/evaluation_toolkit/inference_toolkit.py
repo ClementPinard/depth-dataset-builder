@@ -85,7 +85,10 @@ class inferenceFramework(object):
         """
         timer = Timer()
         self.i = i
-        self.current_sample = inferenceSample(self.root, self.test_files[i], self.max_shift, timer, self.frame_transform)
+        self.current_sample = inferenceSample(self.root,
+                                              self.test_files[i],
+                                              self.max_shift,
+                                              timer, self.frame_transform)
         self.current_sample.timer.start()
         return self.current_sample
 
@@ -166,11 +169,10 @@ class inferenceSample(object):
         full_filepath = self.root / file
         scene = full_filepath.parent
         # Get all frames in the scene folder. Normally, there should be more than "max_shift" frames.
-        scene_metadata = pd.read_csv(scene : "metadata_.csv")
-        scene_files = secene_metadata["image_path"].values
+        scene_files = sorted(scene.files("*.jpg"))
         poses = np.genfromtxt(scene / "poses.txt").reshape((-1, 3, 4))
         sample_id = scene_files.index(full_filepath)
-        assert(sample_id > max_shift)
+        assert(sample_id >= max_shift)
         start_id = sample_id - max_shift
         # Get all frames between start_id (oldest frame) and sample_id.
         # Revert the list so that oldest frames are in the end, like in a buffer
@@ -183,14 +185,14 @@ class inferenceSample(object):
         last_line = np.broadcast_to(np.array([0, 0, 0, 1]), (valid_poses.shape[0], 1, 4))
         valid_poses_full = np.concatenate([valid_poses, last_line], axis=1)
         self.poses = (np.linalg.inv(valid_poses_full[0]) @  valid_poses_full)[:, :3]
-        R = self.poses[:,:3,:3]
+        R = self.poses[:, :3, :3]
         self.rotation_angles = Rotation.from_matrix(R).magnitude()
         self.displacements = np.linalg.norm(self.poses[:, :, -1], axis=-1)
 
         # Case 1 for intrinsics : Zoom level never changed and thus there's only one intrinsics
         # matrix for the whole video, stored in intrinsics.txt This is the most usual case
         # Case 2 : Each frame has its own intrinsics file <name>_intrinsics.txt
-        # Case is only here for later compatibility, but it has not been tested thoroughly
+        # Case is only here for later compatibility, but it has not been tested thoroughly
         if (scene / "intrinsics.txt").isfile():
             self.intrinsics = np.stack([np.genfromtxt(scene / "intrinsics.txt")] * max_shift)
         else:
@@ -240,22 +242,27 @@ class inferenceSample(object):
         function is running.
 
         Args:
-            shift (int, optional): As above. Position relative to sample frame of the frame we want to get. Defaults to 1.
-            displacement (Float, optional): Desired displacement (in meters) between sample frame and the frame we want to get. This parameter
-            overwrite the shift parameter. Defaults to None.
-            max_rot (int, optional): Maximum Rotation, in radians. The function cannot return a frame with a higher rotation than max_rot. It assumes
-            rotation is growing with time (only true for the first frames). The maximum shift of the returned frame corresponds to the first frame
-            with a rotation above this threshold. Defaults to 1.
+            shift (int, optional): As above. Position relative to sample frame of the frame we want to get.
+            Defaults to 1.
+
+            displacement (Float, optional): Desired displacement (in meters) between sample frame and
+            the frame we want to get. This parameter overwrite the shift parameter. Defaults to None.
+
+            max_rot (int, optional): Maximum Rotation, in radians. The function cannot return a frame
+            with a higher rotation than max_rot. It assumes rotation is growing with time
+            (only true for the first frames). The maximum shift of the returned frame corresponds to
+            the first frame with a rotation above this threshold. Defaults to 1.
 
         Returns a tuple of 3:
-            [Unknow type]: Output of the frame_transform function, used on the frame that best represent the different constrains.
+            [Unknow type]: Output of the frame_transform function,
+            used on the frame that best represent the different constrains.
             np.array: 3x3 intrinsics matrix of returned frame
             np.array: 3x4 pose matrix of returned frame
         """
         if displacement is not None:
             shift = max(1, np.abs(self.displacements - displacement).argmin())
         rot_valid = self.rotation_angles < max_rot
-        assert sum(rot_valid[1:shift+1] > 0), "Rotation is always higher than {}".format(max_rot)
+        assert sum(rot_valid[1: shift + 1] > 0), "Rotation is always higher than {}".format(max_rot)
         # Highest shift that has rotation below max_rot thresold
         final_shift = np.where(rot_valid[-1 - shift:])[0][-1]
         return self.get_frame(final_shift)
@@ -305,7 +312,7 @@ def inference_toolkit_example():
     # This is our transform function. It converts the uint8 array into a float array,
     # divides it by 255 to have values in [0,1] and adds the batch dimensions
     def my_transform(img):
-        return x.transpose(2, 0, 1).astype(np.float32)[None] / 255
+        return img.transpose(2, 0, 1).astype(np.float32)[None] / 255
 
     engine = inferenceFramework(args.dataset_root, evaluation_list, my_transform)
     for sample in tqdm(engine):
