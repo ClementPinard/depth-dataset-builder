@@ -1259,7 +1259,7 @@ SfmLearner-Norm and DepthNet-Norm indicates the metrics were first averaged over
 SfmLearner-LogNorm and DepthNet-LogNorm are the same but with logarithm of groundtruth
 
 |         Algorithm | AbsDiff | StdDiff | AbsRel | StdRel | AbsLog |  StdLog |     a1 |     a2 |     a3 |
-|------------------;|--------;|--------;|-------;|-------;|-------;|--------;|-------;|-------;|-------;|
+|------------------:|--------:|--------:|-------:|-------:|-------:|--------:|-------:|-------:|-------:|
 | SFMLearner        | 18.4018 | 24.4582 | 0.5145 | 0.6196 | 1.0049 | 24.4582 | 0.2395 |0.4113  | 0.5385 |
 | SFMLearner-Norm   | 22.0789 | 29.5553 | 0.5418 | 0.6632 | 1.0580 | 29.5553 | 0.2234 | 0.3885 | 0.5143 |
 | SFMLearner-LogNorm|  9.1998 | 16.8135 | 0.9798 | 1.5133 | 1.0593 | 16.8135 | 0.2099 | 0.3473 | 0.4680 |
