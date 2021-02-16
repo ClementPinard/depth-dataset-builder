@@ -23,10 +23,11 @@ You can find an example usage of this Inference Framework for SfmLearner [here](
 
 ## Evaluation
 
-The evaluation step is a simple script that takes into input the computed depth maps (here in the file `output.npz`)
+The evaluation step is a simple script that takes into input the computed depth maps (here in the file `output.npz`). You can combine multiple computed depth maps to compare algorithms.
 
 ```
-depth_evaluation --dataset_root /path/to/dataset/root --est_depth output.npz --evaluation_list_path /path/to/evaluation_list.txt --flight_path_vector_list /path/to/fligt_path_vector_list.txt <--scale_invariant> <--mask_path /path/to/mask.npy>
+depth_evaluation --dataset_root /path/to/dataset/root --est_depth output1.npz output2.npz --algorithm_names name1 name2 --evaluation_list_path /path/to/evaluation_list.txt --flight_path_vector_list /path/to/fligt_path_vector_list.txt <--scale_invariant> <--mask_path /path/to/mask.npy> --output_figures /path/to/figures/folder
 ```
 
 It will output typical metrics and plot advanced statistics regarding the dataset and the depth estimations.
+Note that if you want to save the figures, you will need `xelatex` installed in your system. Otherwise, don't specify a parameter to `--output_figures` and it will use `plt.show`

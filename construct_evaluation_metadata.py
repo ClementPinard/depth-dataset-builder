@@ -52,7 +52,7 @@ def main():
         if f.files('*.jpg'):
             video_sequences.append(f)
 
-    # Select a subset of the videos for training. It won't be used for
+    # Select a subset of the videos for training. It won't be used for 
     # constructing the validation set.
     random.shuffle(video_sequences)
     n = len(video_sequences)

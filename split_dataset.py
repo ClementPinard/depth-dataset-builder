@@ -76,7 +76,6 @@ def sample_frames(sequence, min_displacement):
             origin = pos
 
 
-
 def get_min_depth(row):
     depth_path = row["image_path"].splitext() + ".npy"
     depth = np.load(depth_path)
@@ -112,7 +111,7 @@ def main():
     for v in tqdm(dataset_folders):
         frames_per_video[v] = 0
         dirs_per_video[v] = []
-        metadata = pd.read_csv(v/"metadata.csv")
+        metadata = pd.read_csv(v / "metadata.csv")
         metadata["full_image_path"] = [v / Path(f).basename()
                                        for f in metadata["image_path"].values]
         valid_odometry_frames = metadata["registered"]

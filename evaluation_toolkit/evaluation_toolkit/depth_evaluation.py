@@ -2,6 +2,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from path import Path
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
@@ -14,10 +15,19 @@ parser = ArgumentParser(
 parser.add_argument("--dataset_root", metavar="DIR", type=Path)
 parser.add_argument(
     "--est_depth",
-    metavar="DIR",
+    metavar="PATH",
     type=Path,
-    help="where the depth maps are stored, must be a 3D npy file",
+    nargs='+',
+    help="where the estimated depth maps are stored, must be a 3D npz file",
 )
+parser.add_argument(
+    "--algorithm_names",
+    "--names",
+    metavar="STR",
+    type=str,
+    nargs='+',
+    help="name of the algorithms corresponding to estimated depth arrays")
+
 parser.add_argument(
     "--evaluation_list_path",
     "--eval",
@@ -58,6 +68,14 @@ parser.add_argument(
     type=Path,
     help="path to boolean numpy array. Should be the same size as ground truth. "
     "False value will discard the corresponding pixel location for every ground truth",
+)
+
+parser.add_argument(
+    "--output_figures",
+    metavar="DIR",
+    default=None,
+    type=Path,
+    help="where to save the figures, in pgf format. If not set, will show them with plt.show()"
 )
 
 coords = None
@@ -155,98 +173,23 @@ def error_map(error_per_px):
     return error_map
 
 
-def main():
-    args = parser.parse_args()
-    with open(args.evaluation_list_path, "r") as f:
-        depth_paths = [line[:-1] for line in f.readlines()]
-    fpv_list = np.loadtxt(args.flight_path_vector_list)
-    estimated_depth = np.load(args.est_depth, allow_pickle=True)
-    values_df = []
-    assert len(depth_paths) == len(estimated_depth)
-    if args.depth_mask is not None:
-        mask = np.load(args.depth_mask)
-    else:
-        mask = None
-
-    # Load each GT-estimation pair and extract data in a pandas dataframe
-    # values_df is at first a list of dataframes which we then concatenate
-    for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
-        GT = np.load((args.dataset_root / filepath).stripext() + ".npy")
-        new_values = get_values(
-            GT,
-            estimated_depth[filepath],
-            fpv,
-            args.scale_invariant,
-            mask,
-            args.min_depth,
-            args.max_depth,
-        )
-        if new_values is not None:
-            values_df.append(new_values)
-    values_df = pd.concat(values_df)
-
-    # Additional values to the Dataframe
-    # Note that no mean is computed here, each row in the dataframe is ONE pixel
-    # The dataframe is thus potentially thousands rows long
-    values_df["log_GT"] = np.log(values_df["GT"])
-    values_df["log_estim"] = np.log(values_df["estim"])
-    values_df["diff"] = values_df["estim"] - values_df["GT"]
-    values_df["absdiff"] = values_df["diff"].abs()
-    values_df["absdiff2"] = np.power(values_df["diff"], 2)
-    values_df["reldiff"] = values_df["absdiff"] / values_df["GT"]
-    values_df["reldiff2"] = np.power(values_df["reldiff"], 2)
-    values_df["logdiff"] = values_df["log_estim"] - values_df["log_GT"]
-    values_df["logdiff2"] = np.power(values_df["absdiff"], 2)
-    values_df["abslogdiff"] = values_df["logdiff"].abs()
-    values_df["a1"] = (values_df["abslogdiff"] < np.log(1.25)).astype(float)
-    values_df["a2"] = (values_df["abslogdiff"] < 2 * np.log(1.25)).astype(float)
-    values_df["a3"] = (values_df["abslogdiff"] < 3 * np.log(1.25)).astype(float)
-
-    # Compute mean erros, a la Eigen et al.
+def error_metrics(df, algo_name, suffix=''):
     error_names = ["AbsDiff", "StdDiff", "AbsRel", "StdRel", "AbsLog", "StdLog", "a1", "a2", "a3"]
     errors = [
-        values_df["absdiff"].mean(),
-        np.sqrt(values_df["absdiff2"].mean()),
-        values_df["reldiff"].mean(),
-        np.sqrt(values_df["reldiff2"].mean()),
-        values_df["abslogdiff"].mean(),
-        np.sqrt(values_df["logdiff2"].mean()),
-        values_df["a1"].mean(),
-        values_df["a2"].mean(),
-        values_df["a3"].mean(),
-    ]
-
-    # Get mean values per ground truth values, and then mean them
-    # This way, we have the same weight for each ground truth value
-    values_df_per_gt = values_df.groupby(by=np.round(values_df["GT"])).mean()
-    weighted_errors = [
-        values_df_per_gt["absdiff"].mean(),
-        np.sqrt(values_df_per_gt["absdiff2"].mean()),
-        values_df_per_gt["reldiff"].mean(),
-        np.sqrt(values_df_per_gt["reldiff2"].mean()),
-        values_df_per_gt["abslogdiff"].mean(),
-        np.sqrt(values_df_per_gt["logdiff2"].mean()),
-        values_df_per_gt["a1"].mean(),
-        values_df_per_gt["a2"].mean(),
-        values_df_per_gt["a3"].mean(),
-    ]
-
-    values_df_per_log_gt = values_df.groupby(by=0.1 * np.round(10 * values_df["log_GT"])).mean()
-    weighted_errors_log = [
-        values_df_per_log_gt["absdiff"].mean(),
-        np.sqrt(values_df_per_log_gt["absdiff2"].mean()),
-        values_df_per_log_gt["reldiff"].mean(),
-        np.sqrt(values_df_per_log_gt["reldiff2"].mean()),
-        values_df_per_log_gt["abslogdiff"].mean(),
-        np.sqrt(values_df_per_log_gt["logdiff2"].mean()),
-        values_df_per_log_gt["a1"].mean(),
-        values_df_per_log_gt["a2"].mean(),
-        values_df_per_log_gt["a3"].mean(),
+        df["absdiff"].mean(),
+        np.sqrt(df["absdiff2"].mean()),
+        df["reldiff"].mean(),
+        np.sqrt(df["reldiff2"].mean()),
+        df["abslogdiff"].mean(),
+        np.sqrt(df["logdiff2"].mean()),
+        df["a1"].mean(),
+        df["a2"].mean(),
+        df["a3"].mean(),
     ]
 
     # Print the results
     # TODO : save the result in latex tab format ?
-    print("Results for usual metrics")
+    print("Results for usual metrics for algorithm {}, {}".format(algo_name, suffix))
     print(
         "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(
             *error_names
@@ -258,29 +201,88 @@ def main():
         )
     )
 
-    print("Results for usual metrics, weighted by inverse of GT frequencies")
-    print(
-        "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(
-            *error_names
-        )
-    )
-    print(
-        "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(
-            *weighted_errors
-        )
-    )
 
-    print("Results for usual metrics, weighted by inverse of log GT frequencies")
-    print(
-        "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}".format(
-            *error_names
-        )
-    )
-    print(
-        "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}".format(
-            *weighted_errors_log
-        )
-    )
+def main():
+    args = parser.parse_args()
+    assert (len(args.est_depth) == len(args.algorithm_names))
+
+    if args.output_figures is not None:
+        matplotlib.use("pgf")
+        pgf_with_xelatex = {
+            'text.usetex': True,
+            "pgf.texsystem": "xelatex",
+            "pgf.preamble": r"\usepackage{amssymb} "
+                            r"\usepackage{amsmath} "
+                            r"\usepackage{fontspec} "
+                            r"\usepackage{unicode-math}"
+        }
+        # Change to pgf if needed
+        savefig_ext = "pdf"
+        matplotlib.rcParams.update(pgf_with_xelatex)
+
+    with open(args.evaluation_list_path, "r") as f:
+        depth_paths = [line[:-1] for line in f.readlines()]
+    fpv_list = np.loadtxt(args.flight_path_vector_list)
+    dataframes = {}
+    for p, name in zip(args.est_depth, args.algorithm_names):
+        estimated_depth = np.load(p, allow_pickle=True)
+        values_df = []
+        assert len(depth_paths) == len(estimated_depth)
+        if args.depth_mask is not None:
+            mask = np.load(args.depth_mask)
+        else:
+            mask = None
+
+        # Load each GT-estimation pair and extract data in a pandas dataframe
+        # values_df is at first a list of dataframes which we then concatenate
+        print("getting results for {} algorithm (file : {})".format(name, p))
+        for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
+            GT = np.load((args.dataset_root / filepath).stripext() + ".npy")
+            new_values = get_values(
+                GT,
+                estimated_depth[filepath],
+                fpv,
+                args.scale_invariant,
+                mask,
+                args.min_depth,
+                args.max_depth,
+            )
+            if new_values is not None:
+                values_df.append(new_values)
+        values_df = pd.concat(values_df)
+
+        # Additional values to the Dataframe
+        # Note that no mean is computed here, each row in the dataframe is ONE pixel
+        # The dataframe is thus potentially thousands rows long
+        values_df["log_GT"] = np.log(values_df["GT"])
+        values_df["log_estim"] = np.log(values_df["estim"])
+        values_df["diff"] = values_df["estim"] - values_df["GT"]
+        values_df["absdiff"] = values_df["diff"].abs()
+        values_df["absdiff2"] = np.power(values_df["diff"], 2)
+        values_df["reldiff"] = values_df["absdiff"] / values_df["GT"]
+        values_df["reldiff2"] = np.power(values_df["reldiff"], 2)
+        values_df["logdiff"] = values_df["log_estim"] - values_df["log_GT"]
+        values_df["logdiff2"] = np.power(values_df["absdiff"], 2)
+        values_df["abslogdiff"] = values_df["logdiff"].abs()
+        values_df["a1"] = (values_df["abslogdiff"] < np.log(1.25)).astype(float)
+        values_df["a2"] = (values_df["abslogdiff"] < 2 * np.log(1.25)).astype(float)
+        values_df["a3"] = (values_df["abslogdiff"] < 3 * np.log(1.25)).astype(float)
+        dataframes[name] = values_df
+
+    for name, df in dataframes.items():
+        print()
+        print("---------------------------")
+        print("Results for {}".format(name))
+        print("---------------------------")
+        print()
+        # Compute mean erros, a la Eigen et al.
+        error_metrics(df, name, "averaged over all points")
+        # Get mean values per ground truth values, and then mean them
+        # This way, we have the same weight for each ground truth value
+        values_df_per_gt = df.groupby(by=np.round(values_df["GT"])).mean()
+        error_metrics(values_df_per_gt, name, "averaged over gt values")
+        values_df_per_log_gt = df.groupby(by=0.1 * np.round(10 * values_df["log_GT"])).mean()
+        error_metrics(values_df_per_log_gt, name, "averaged over log(gt) values")
 
     # TODO better handling of the parameters, maybe just add it to argparse
     plot = True
@@ -301,152 +303,175 @@ def main():
         max_gt = values_df["GT"].max()
         bins = np.linspace(min_gt, max_gt, n_bins + 1)
 
-        estim_per_GT = {}
-        for b1, b2 in zip(bins[:-1], bins[1:]):
-            per_gt = values_df[(values_df["GT"] > b1) & (values_df["GT"] < b2)]
-            estim_per_GT[(b1 + b2) / 2] = {
-                "normal": np.histogram(per_gt["diff"], bins=100),
-                "log_normal": np.histogram(per_gt["logdiff"], bins=100),
-                "bins": [b1, b2],
-            }
+        histograms = {}
+        for name, df in dataframes.items():
+            histograms[name] = {}
+            estim_per_GT = {}
+            for b1, b2 in zip(bins[:-1], bins[1:]):
+                per_gt = df[(df["GT"] > b1) & (df["GT"] < b2)]
+                estim_per_GT[(b1 + b2) / 2] = {
+                    "normal": np.histogram(per_gt["diff"], bins=100),
+                    "log_normal": np.histogram(per_gt["logdiff"], bins=100),
+                    "bins": [b1, b2],
+                }
+            histograms[name]["estim_per_GT"] = estim_per_GT
 
-        # Global histograms
-        # Same as above, but with one bin, and thus not GT-wise
+            # Global histograms
+            # Same as above, but with one bin, and thus not GT-wise
 
-        global_diff = np.histogram(values_df["estim"] - values_df["GT"], bins=100)
-        global_log_diff = np.histogram(values_df["log_estim"] - values_df["log_GT"], bins=100)
+            histograms[name]["global_diff"] = np.histogram(df["estim"] - df["GT"], bins=100)
+            histograms[name]["global_log_diff"] = np.histogram(df["log_estim"] - df["log_GT"], bins=100)
 
-        # Depth error per pixel
-        # Useful to identify if a region in the screen is particualrly faulty.
-        # Can help spot dataset inconsistency (eg sky is always in the same place)
-        # Can also help find calibration artefacts ?
+            # Depth error per pixel
+            # Useful to identify if a region in the screen is particualrly faulty.
+            # Can help spot dataset inconsistency (eg sky is always in the same place)
+            # Can also help find calibration artefacts ?
 
-        metric_per_px = values_df.groupby(by=["x", "y"]).mean()
-        mean_diff_per_px = error_map(metric_per_px["absdiff"])
-        mean_log_diff_per_px = error_map(metric_per_px["logdiff"])
+            metric_per_px = df.groupby(by=["x", "y"]).mean()
+            histograms[name]["mean_diff_per_px"] = error_map(metric_per_px["absdiff"])
+            histograms[name]["mean_log_diff_per_px"] = error_map(metric_per_px["logdiff"])
 
-        # Depth error wrt pixelwise distance to FPV. For SFM, the closer we are to FPV,
-        # The harde it is to deduce depth. But in the same time, the more
-        # usefule depth becomes, because it indicates distances of obstacles where
-        # we are headed to.
+            # Depth error wrt pixelwise distance to FPV. For SFM, the closer we are to FPV,
+            # The harde it is to deduce depth. But in the same time, the more
+            # usefule depth becomes, because it indicates distances of obstacles where
+            # we are headed to.
 
-        # Note : if fpv is too far, it means it is not on the image
-        # And thus this metric is not really interesting.
-        quantiles_per_fpv = group_quantiles(
-            values_df[values_df["fpv_dist"] < 1000], "fpv_dist", ["absdiff", "abslogdiff"]
-        )
-        quantiles_per_gt = group_quantiles(values_df, "GT", ["absdiff", "abslogdiff"])
-        quantiles_per_estimation = group_quantiles(values_df, "estim", ["absdiff", "abslogdiff"])
+            # Note : if fpv is too far, it means it is not on the image
+            # And thus this metric is not really interesting.
+            histograms[name]["quantiles_per_fpv"] = group_quantiles(
+                df[df["fpv_dist"] < 1000], "fpv_dist", ["absdiff", "abslogdiff"]
+            )
+            histograms[name]["quantiles_per_gt"] = group_quantiles(df, "GT", ["absdiff", "abslogdiff"])
+            histograms[name]["quantiles_per_estimation"] = group_quantiles(df, "estim", ["absdiff", "abslogdiff"])
+
 
         # PLOTTING
-
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         # First plot, general insight for dataset
-        fig, axes = plt.subplots(2, 1, sharex=True)
-        GT_distrib = np.histogram(values_df["GT"], bins=100)
-        plot_distribution(*GT_distrib, axes[0])
+        fig1, axes = plt.subplots(2, 1, sharex=True)
+        GT_distrib = None
+        for name, df in dataframes.items():
+            if GT_distrib is None:
+                GT_distrib = np.histogram(df["GT"], bins=100)
+                plot_distribution(*GT_distrib, axes[0], label="groundtruth depth")
+            estim_distrib = np.histogram(df["estim"], bins=100)
+            plot_distribution(*estim_distrib, axes[1], label=name)
         axes[0].set_title("Ground Truth distribution")
-        estim_distrib = np.histogram(values_df["estim"], bins=100)
-        plot_distribution(*estim_distrib, axes[1])
-        axes[1].set_title("depth estimation distribution")
+        axes[0].legend()
+        axes[1].set_title("depth estimation distribution from {}".format(name))
+        axes[1].legend()
+        if args.output_figures is not None:
+            fig1.savefig(args.output_figures / "depth_distrib.{}".format(savefig_ext))
 
-        # Second plot, GT-wise difference
-        fig, axes = plt.subplots(1, 2, sharey=True)
-        for i, (k, v) in enumerate(estim_per_GT.items()):
-            plot_distribution(
-                *v["normal"], axes[0], label="$GT \\in [{:.1f},{:.1f}]$".format(*v["bins"])
-            )
-            plot_distribution(
-                *v["log_normal"],
-                axes[1],
-                label="$GT \\in [{:.1f},{:.1f}]$".format(*v["bins"]),
-                log_bins=True
-            )
+        # Second plot, GT-wise difference one figure per algorithm
+        for name, h in histograms.items():
+            fig2, axes = plt.subplots(1, 2, sharey=True)
+            for i, (k, v) in enumerate(h["estim_per_GT"].items()):
+                plot_distribution(
+                    *v["normal"], axes[0], label="$GT \\in [{:.1f},{:.1f}]$".format(*v["bins"])
+                )
+                plot_distribution(
+                    *v["log_normal"],
+                    axes[1],
+                    label="$GT \\in [{:.1f},{:.1f}]$".format(*v["bins"]),
+                    log_bins=True
+                )
+                # axes[0, 0].set_title("distribution of estimation around GT = {:.2f}".format(k))
+                # axes[0, 1].set_title("distribution of log estimation around log GT = {:.2f}".format(np.log(k)))
             axes[0].legend()
+            axes[0].set_title("GT - estimation difference")
             axes[1].legend()
-            # axes[0, 0].set_title("distribution of estimation around GT = {:.2f}".format(k))
-            # axes[0, 1].set_title("distribution of log estimation around log GT = {:.2f}".format(np.log(k)))
+            axes[0].set_title("logt GT - log estimation difference")
+            if args.output_figures is not None:
+                fig2.savefig(args.output_figures / "GTwise_depth_diff_{}.{}".format(name, savefig_ext))
 
         # Third plot, global diff histogram
         fig, axes = plt.subplots(2, 1)
-        plot_distribution(*global_diff, axes[0])
-        axes[0].set_title("Global difference distribution from GT")
-        plot_distribution(*global_log_diff, axes[1], log_bins=True)
+        for name, h in histograms.items():
+            plot_distribution(*h["global_diff"], axes[0], name)
+            plot_distribution(*h["global_log_diff"], axes[1], name, log_bins=True)
         axes[1].set_title("Global log difference distribution from GT")
+        axes[0].set_title("Global difference distribution from GT")
+        axes[1].legend()
+        axes[0].legend()
         plt.tight_layout()
+        if args.output_figures is not None:
+            fig.savefig(args.output_figures / "global_depth_diff.{}".format(savefig_ext))
+
+        def plot_quartile(axes, color, algo_name, df):
+            index = df.index
+            diff = df["absdiff"]
+            logdiff = df["abslogdiff"]
+            axes[0].fill_between(
+                index, diff[0.25], diff[0.75], color=c, alpha=0.1
+            )
+            axes[0].plot(diff[0.5].index, diff[0.5], color=c, label=algo_name)
+            axes[1].fill_between(
+                index, logdiff[0.25], logdiff[0.75], color=c, alpha=0.1
+            )
+            axes[1].plot(logdiff[0.5], label=algo_name)
+            axes[0].legend()
+            axes[1].legend()
 
         # Fourth plot, error wrt distance to fpv
         fig, axes = plt.subplots(2, 1, sharex=True)
-        index = quantiles_per_fpv.index
-        diff_per_fpv = quantiles_per_fpv["absdiff"]
-        logdiff_per_fpv = quantiles_per_fpv["abslogdiff"]
-        axes[0].fill_between(
-            index, diff_per_fpv[0.25], diff_per_fpv[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[0].plot(diff_per_fpv[0.5].index, diff_per_fpv[0.5], label="median")
+        for c, (name, h) in zip(colors, histograms.items()):
+            plot_quartile(axes, c, name, h["quantiles_per_fpv"])
         axes[0].set_title("Error wrt to distance to fpv (in px)")
-        axes[1].fill_between(
-            index, logdiff_per_fpv[0.25], logdiff_per_fpv[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[1].plot(logdiff_per_fpv[0.5], label="median")
         axes[1].set_title("Log error wrt to distance to fpv (in px)")
+        axes[1].set_yscale('log')
         axes[1].set_xlabel("Distance to flight path vector (in px)")
         plt.tight_layout()
+        if args.output_figures is not None:
+            fig.savefig(args.output_figures / "fpv_error_quantiles.{}".format(savefig_ext))
 
         # Fifth plot, another way of plotting GT-wise error:
         # For each GT depth, we show 3 points : median, and 50% confidence intervale (2 points)
         # We have less info than the full histogram but we can show more GT values
         fig, axes = plt.subplots(2, 1, sharex=True)
-        index = quantiles_per_gt.index
-        diff_per_gt = quantiles_per_gt["absdiff"]
-        logdiff_per_gt = quantiles_per_gt["abslogdiff"]
-        axes[0].fill_between(
-            index, diff_per_gt[0.25], diff_per_gt[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[0].plot(diff_per_gt[0.5], label="median")
+        for c, (name, h) in zip(colors, histograms.items()):
+            plot_quartile(axes, c, name, h["quantiles_per_gt"])
         axes[0].set_title("Error wrt to groundtruth depth")
-        axes[1].fill_between(
-            index, logdiff_per_gt[0.25], logdiff_per_gt[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[1].plot(logdiff_per_gt[0.5], label="median")
         axes[1].set_title("Log error wrt to groundtruth depth")
+        axes[1].set_yscale('log')
         axes[1].set_xlabel("Estimated depth (in meters)")
         plt.tight_layout()
+        if args.output_figures is not None:
+            fig.savefig(args.output_figures / "gt_error_quantiles.{}".format(savefig_ext))
 
         # Last plot, error with respect to estimated depth
 
         fig, axes = plt.subplots(2, 1, sharex=True)
-        index = quantiles_per_estimation.index
-        diff_per_est = quantiles_per_estimation["absdiff"]
-        logdiff_per_est = quantiles_per_estimation["abslogdiff"]
-        axes[0].fill_between(
-            index, diff_per_est[0.25], diff_per_est[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[0].plot(diff_per_est[0.5], label="median")
+        for c, (name, h) in zip(colors, histograms.items()):
+            plot_quartile(axes, c, name, h["quantiles_per_estimation"])
         axes[0].set_title("Error wrt to estimated depth")
-        axes[1].fill_between(
-            index, logdiff_per_est[0.25], logdiff_per_est[0.75], color="cyan", label="25% - 75%"
-        )
-        axes[1].plot(logdiff_per_est[0.5], label="median")
         axes[1].set_title("Log error wrt to estimated depth")
+        axes[1].set_yscale('log')
         axes[1].set_xlabel("Estimated depth (in meters)")
         plt.tight_layout()
+        if args.output_figures is not None:
+            fig.savefig(args.output_figures / "est_error_quantiles.{}".format(savefig_ext))
 
         # Last plot, pixelwise error
-        fig, axes = plt.subplots(2, 1)
-        pl = axes[0].imshow(mean_diff_per_px.T)
-        axes[0].set_title("Mean error for each pixel")
-        divider = make_axes_locatable(axes[0])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        cbar = fig.colorbar(pl, cax=cax)
-        cbar.ax.tick_params(axis="y", direction="in")
-        pl = axes[1].imshow(mean_log_diff_per_px.T)
-        axes[1].set_title("Mean Log error for each pixel")
-        divider = make_axes_locatable(axes[1])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        cbar = fig.colorbar(pl, cax=cax)
-        cbar.ax.tick_params(axis="y", direction="in")
-        plt.tight_layout()
-        plt.show()
+        for name, h in histograms.items():
+            fig, axes = plt.subplots(2, 1)
+            pl = axes[0].imshow(h["mean_diff_per_px"].T)
+            axes[0].set_title("Mean error for each pixel")
+            divider = make_axes_locatable(axes[0])
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cbar = fig.colorbar(pl, cax=cax)
+            cbar.ax.tick_params(axis="y", direction="in")
+            pl = axes[1].imshow(h["mean_log_diff_per_px"].T)
+            axes[1].set_title("Mean Log error for each pixel")
+            divider = make_axes_locatable(axes[1])
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cbar = fig.colorbar(pl, cax=cax)
+            cbar.ax.tick_params(axis="y", direction="in")
+            plt.tight_layout()
+            if args.output_figures is not None:
+                fig.savefig(args.output_figures / "pixel_error_map_{}.{}".format(name, savefig_ext))
+        if args.output_figures is None:
+            plt.show()
 
 
 if __name__ == "__main__":
