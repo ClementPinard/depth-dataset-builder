@@ -174,13 +174,13 @@ def error_map(error_per_px):
 
 
 def error_metrics(df, algo_name, suffix=''):
-    error_names = ["AbsDiff", "StdDiff", "AbsRel", "StdRel", "AbsLog", "StdLog", "a1", "a2", "a3"]
+    error_names = ["AbsDiff", "AbsRel", "AbsLog", "StdDiff", "StdRel", "StdLog", "a1", "a2", "a3"]
     errors = [
         df["absdiff"].mean(),
-        np.sqrt(df["absdiff2"].mean()),
         df["reldiff"].mean(),
-        np.sqrt(df["reldiff2"].mean()),
         df["abslogdiff"].mean(),
+        np.sqrt(df["absdiff2"].mean()),
+        np.sqrt(df["reldiff2"].mean()),
         np.sqrt(df["logdiff2"].mean()),
         df["a1"].mean(),
         df["a2"].mean(),
@@ -262,7 +262,7 @@ def main():
         values_df["reldiff"] = values_df["absdiff"] / values_df["GT"]
         values_df["reldiff2"] = np.power(values_df["reldiff"], 2)
         values_df["logdiff"] = values_df["log_estim"] - values_df["log_GT"]
-        values_df["logdiff2"] = np.power(values_df["absdiff"], 2)
+        values_df["logdiff2"] = np.power(values_df["logdiff"], 2)
         values_df["abslogdiff"] = values_df["logdiff"].abs()
         values_df["a1"] = (values_df["abslogdiff"] < np.log(1.25)).astype(float)
         values_df["a2"] = (values_df["abslogdiff"] < 2 * np.log(1.25)).astype(float)
