@@ -344,7 +344,6 @@ def main():
             histograms[name]["quantiles_per_gt"] = group_quantiles(df, "GT", ["absdiff", "abslogdiff"])
             histograms[name]["quantiles_per_estimation"] = group_quantiles(df, "estim", ["absdiff", "abslogdiff"])
 
-
         # PLOTTING
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         # First plot, general insight for dataset
@@ -381,7 +380,8 @@ def main():
             axes[0].legend()
             axes[0].set_title("GT - estimation difference")
             axes[1].legend()
-            axes[0].set_title("logt GT - log estimation difference")
+            axes[1].set_title("logt GT - log estimation difference")
+            fig2.tight_layout()
             if args.output_figures is not None:
                 fig2.savefig(args.output_figures / "GTwise_depth_diff_{}.{}".format(name, savefig_ext))
 
