@@ -5,7 +5,10 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib import cm
 from tqdm import tqdm
+from imageio import imwrite
 
 parser = ArgumentParser(
     description="Evaluate depth maps with respect to ground truth depth and FPV position",
@@ -76,6 +79,14 @@ parser.add_argument(
     default=None,
     type=Path,
     help="where to save the figures, in pgf format. If not set, will show them with plt.show()"
+)
+
+parser.add_argument(
+    "--output_samples",
+    type=int,
+    default=0,
+    metavar='N',
+    help="Outputs N Gt and estimation vizualisation sampels"
 )
 
 coords = None
@@ -174,6 +185,15 @@ def error_map(error_per_px):
 
 
 def error_metrics(df, algo_name, suffix=''):
+    """Compute error metrics from a dataframe.
+
+    Args:
+        df (pd.DataFrame): Table containing the metrics we are interested in. It can be
+        constructed with a groupby to have mean computed over a particular value insead of a global mean.
+        algo_name (str): Algorithm for which we compute the metrics
+        suffix (str, optional): Precision for the particular metric we are computing,
+        depending on how the dataframe was constructed and grouped by. Defaults to ''.
+    """
     error_names = ["AbsDiff", "AbsRel", "AbsLog", "StdDiff", "StdRel", "StdLog", "a1", "a2", "a3"]
     errors = [
         df["absdiff"].mean(),
@@ -202,6 +222,55 @@ def error_metrics(df, algo_name, suffix=''):
     )
 
 
+def viz_depth(depth, max_depth):
+    """Convert depth to a colored vizualisation. Infinity is black
+
+    Args:
+        depth (np.array): 2D array of depth values
+        max_depth (float): max_depth will correspond to the end of the colormap spectrum.
+        Every value above this will be the same color, expect infinity which will be black.
+
+    Returns:
+        np.array: np.uint8 array of colorized depth, ready to be saved
+    """
+    opencv_rainbow_data = (
+        (0.000, (1.00, 0.00, 0.00)),
+        (0.400, (1.00, 1.00, 0.00)),
+        (0.600, (0.00, 1.00, 0.00)),
+        (0.800, (0.00, 0.00, 1.00)),
+        (1.000, (0.60, 0.00, 1.00))
+    )
+    rainbow_cmap = LinearSegmentedColormap.from_list('opencv_rainbow', opencv_rainbow_data, 1000)
+    bone = cm.get_cmap('bone', 10000)
+    depth_norm = depth / max_depth
+    depth_viz = rainbow_cmap(depth_norm, bytes=True)[..., :3]
+    depth_viz[depth == np.inf] = 0
+    return depth_viz
+
+
+def visualize_sample(img_path, gt_path, estimations, algo_names, max_depth, output_folder):
+    """Visualize a sample and save to output_folder.
+    A sample consists in the image, the ground truth depth, and the different estimations
+
+    Args:
+        img_path (Path): Where to load the image
+        gt_path (Path): Where to load the Ground truth depth map (usually same name as img but with npy extension)
+        estimations (List[np.array]): List of the estimations from all the algos we are testing
+        algo_names (List[str]): List of algorithm names, corresponding to the estimations given above
+        max_depth (float): depth saturation value above which every thing will be the same color
+        output_folder (Path): Where to save all the different vizualisations
+    """
+    img_path.copy(output_folder)
+    img_name = img_path.stem
+
+    gt_depth = np.load(gt_path)
+    max_gt = np.max(gt_depth[gt_depth < np.inf])
+    max_depth = min(max_gt, max_depth)
+    imwrite(output_folder / "{}_GT.png".format(img_name), viz_depth(gt_depth, max_depth))
+    for n, e in zip(algo_names, estimations):
+        imwrite(output_folder / "{}_{}.png".format(img_name, n), viz_depth(e, max_depth))
+
+
 def main():
     args = parser.parse_args()
     assert (len(args.est_depth) == len(args.algorithm_names))
@@ -221,13 +290,30 @@ def main():
         matplotlib.rcParams.update(pgf_with_xelatex)
 
     with open(args.evaluation_list_path, "r") as f:
-        depth_paths = [line[:-1] for line in f.readlines()]
+        test_img_path = [line[:-1] for line in f.readlines()]
     fpv_list = np.loadtxt(args.flight_path_vector_list)
     dataframes = {}
+
+    if args.output_samples > 0 and args.output_figures is not None:
+        np.random.seed(1)
+        to_sample = np.random.choice(len(test_img_path), args.output_samples)
+        for i in to_sample:
+            estimated_depth_maps = []
+            img_path = test_img_path[i]
+            for p in args.est_depth:
+                depth = np.load(p, allow_pickle=True)[img_path]
+                estimated_depth_maps.append(depth)
+            visualize_sample(args.dataset_root / img_path,
+                             (args.dataset_root / img_path).stripext() + ".npy",
+                             estimated_depth_maps,
+                             args.algorithm_names,
+                             args.max_depth,
+                             args.output_figures)
+
     for p, name in zip(args.est_depth, args.algorithm_names):
         estimated_depth = np.load(p, allow_pickle=True)
         values_df = []
-        assert len(depth_paths) == len(estimated_depth)
+        assert len(test_img_path) == len(estimated_depth)
         if args.depth_mask is not None:
             mask = np.load(args.depth_mask)
         else:
@@ -236,7 +322,7 @@ def main():
         # Load each GT-estimation pair and extract data in a pandas dataframe
         # values_df is at first a list of dataframes which we then concatenate
         print("getting results for {} algorithm (file : {})".format(name, p))
-        for filepath, fpv in tqdm(zip(depth_paths, fpv_list), total=len(fpv_list)):
+        for filepath, fpv in tqdm(zip(test_img_path, fpv_list), total=len(fpv_list)):
             GT = np.load((args.dataset_root / filepath).stripext() + ".npy")
             new_values = get_values(
                 GT,
