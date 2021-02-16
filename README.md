@@ -1248,21 +1248,42 @@ Thorough photogrammetry was done with 1000 frames. Notice that not all the area 
 
 ### Depth algorithm evaluation.
 
-Training and evaluation was done with SFMLearner. See inference script https://github.com/ClementPinard/SfmLearner-Pytorch/blob/validation_set_constructor/inference.py
+Training and evaluation was done with DepthNet SFMLearner. See inference scripts:
+ - https://github.com/ClementPinard/SfmLearner-Pytorch/blob/validation_set_constructor/inference.py
+ - https://github.com/ClementPinard/unsupervised-depthnet/blob/validation_set_construction/inference_RDC.py
 
-```
-Results for usual metrics
-   AbsDiff,    StdDiff,     AbsRel,     StdRel,     AbsLog,     StdLog,         a1,         a2,         a3
-   17.1951,    33.2526,     0.3735,     0.9200,     0.3129,     0.4512,     0.5126,     0.7629,     0.8919
-```
 
-Graphs :
 
-![h](images/Figure_1.png)
-![h](images/Figure_2.png)
-![h](images/Figure_3.png)
-![h](images/Figure_4.png)
-![h](images/Figure_5.png)
+SfmLearner-Norm and DepthNet-Norm indicates the metrics were first averaged over estimations for the same ground truth, and then averaged together. That way, the mean is weighted by the inverse of the ground truth depth frequency in the evaluation set.
+
+SfmLearner-LogNorm and DepthNet-LogNorm are the same but with logarithm of groundtruth
+
+|         Algorithm | AbsDiff | StdDiff | AbsRel | StdRel | AbsLog |  StdLog |     a1 |     a2 |     a3 |
+|------------------;|--------;|--------;|-------;|-------;|-------;|--------;|-------;|-------;|-------;|
+| SFMLearner        | 18.4018 | 24.4582 | 0.5145 | 0.6196 | 1.0049 | 24.4582 | 0.2395 |0.4113  | 0.5385 |
+| SFMLearner-Norm   | 22.0789 | 29.5553 | 0.5418 | 0.6632 | 1.0580 | 29.5553 | 0.2234 | 0.3885 | 0.5143 |
+| SFMLearner-LogNorm|  9.1998 | 16.8135 | 0.9798 | 1.5133 | 1.0593 | 16.8135 | 0.2099 | 0.3473 | 0.4680 |
+| DepthNet          | 11.9498 | 19.4010 | 0.3214 | 0.4651 | 0.6217 | 19.4010 | 0.5708 | 0.7050 | 0.7479 |
+| DepthNet-Norm     | 15.0757 | 24.1440 | 0.3478 | 0.5159 | 0.6708 | 24.1440 | 0.5244 | 0.6732 | 0.7270 |
+| DepthNet-LogNorm  |  5.9904 | 13.5207 | 0.6038 | 1.1525 | 0.5642 | 13.5207 | 0.4629 | 0.6221 | 0.7154 |
+
+### Graphs :
+
+#### Comparison graphs
+
+![h](images/plot/depth_distrib.jpg)
+![h](images/plot/est_error_quantiles.jpg)
+![h](images/plot/fpv_error_quantiles.jpg)
+![h](images/plot/gt_error_quantiles.jpg)
+
+
+#### DepthNet diff dsitribtions
+
+![h](images/plot/GTwise_depth_diff_DepthNet.jpg)
+
+#### DispNet SfmeLearner diff distributions
+
+![h](images/plot/GTwise_depth_diff_SfmLearner.jpg)
 
 # Todo
 
