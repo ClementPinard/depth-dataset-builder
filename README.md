@@ -5,6 +5,25 @@
 This is a set of python scripts  and c++ programs used to construct a depth validation set with a Lidar generated point cloud.
 For a brief recap of what it does, see section [How it works](#how-it-works)
 
+See the [corresponding article](https://arxiv.org/abs/2103.15970), or the [project Website](https://clementpinard.fr/rigid_depth_constructor/) for more info.
+
+If you find this tool useful for your research, please use this citation :
+
+```
+@unpublished{PinardRDC,
+    TITLE = {{Does it work outside this benchmark? Introducing the Rigid Depth Constructor tool,
+              depth validation dataset construction in rigid scenes for the masses.}},
+    AUTHOR = {Pinard, Cl{\'e}ment and Manzanera, Antoine},
+    URL = {https://github.com/ClementPinard/depth-dataset-builder},
+    NOTE = {working paper or preprint},
+    YEAR = {2021},
+    MONTH = Mar,
+    PDF = {https://hal.archives-ouvertes.fr/hal-03184946/file/depth_validation_dataset_construction.pdf},
+    HAL_ID = {hal-03184946},
+    HAL_VERSION = {v1},
+}
+```
+
 ## Table of contents
 
 * [Software Dependencies](#software-dependencies)
