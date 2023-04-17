@@ -10,17 +10,13 @@ See the [corresponding article](https://arxiv.org/abs/2103.15970), or the [proje
 If you find this tool useful for your research, please use this citation :
 
 ```
-@unpublished{PinardRDC,
-    TITLE = {{Does it work outside this benchmark? Introducing the Rigid Depth Constructor tool,
-              depth validation dataset construction in rigid scenes for the masses.}},
-    AUTHOR = {Pinard, Cl{\'e}ment and Manzanera, Antoine},
-    URL = {https://github.com/ClementPinard/depth-dataset-builder},
-    NOTE = {working paper or preprint},
-    YEAR = {2021},
-    MONTH = Mar,
-    PDF = {https://hal.archives-ouvertes.fr/hal-03184946/file/depth_validation_dataset_construction.pdf},
-    HAL_ID = {hal-03184946},
-    HAL_VERSION = {v1},
+@article{pinard2023does,
+  title={Does it work outside this benchmark? Introducing the rigid depth constructor tool: Depth validation dataset construction in rigid scenes for the masses},
+  author={Pinard, Cl{\'e}ment and Manzanera, Antoine},
+  journal={Multimedia Tools and Applications},
+  pages={1--27},
+  year={2023},
+  publisher={Springer}
 }
 ```
 
