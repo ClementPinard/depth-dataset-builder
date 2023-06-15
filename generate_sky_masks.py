@@ -61,7 +61,6 @@ def extract_sky_mask(network, image_paths, mask_folder):
 def process_folder(folder_to_process, colmap_img_root, mask_path, pic_ext, verbose=False, batchsize=8, **env):
     network = prepare_network()
     folders = [folder_to_process] + list(folder_to_process.walkdirs())
-
     for folder in folders:
 
         mask_folder = mask_path/colmap_img_root.relpathto(folder)
@@ -84,7 +83,6 @@ def process_folder(folder_to_process, colmap_img_root, mask_path, pic_ext, verbo
     del network
     torch.cuda.empty_cache()
 
-
 parser = ArgumentParser(description='sky mask generator using ENet trained on cityscapes',
                         formatter_class=ArgumentDefaultsHelpFormatter)
 
@@ -105,3 +103,4 @@ if __name__ == '__main__':
     file_exts = ['jpg', 'JPG']
 
     process_folder(args.img_dir, args.colmap_img_root, args.mask_root, file_exts, True, args.batchsize)
+

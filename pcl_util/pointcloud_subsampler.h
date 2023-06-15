@@ -19,7 +19,7 @@ typename pcl::PointCloud<PointT>::Ptr filter(typename pcl::PointCloud<PointT>::P
   pcl::VoxelGrid<PointT> vox;
   vox.setLeafSize (resolution, resolution, resolution);
 
-  for (auto it = octree.leaf_begin(); it != octree.leaf_end(); ++it) {
+  for (auto it = octree.leaf_depth_begin(); it != octree.leaf_depth_end(); ++it) {
     pcl::octree::OctreeContainerPointIndices& container = it.getLeafContainer();
 
     pcl::IndicesPtr indexVector(new std::vector<int>);
