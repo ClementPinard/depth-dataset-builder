@@ -74,6 +74,7 @@ def main():
     if i not in args.skip_step:
         print_step(i, "First thorough photogrammetry")
         env["thorough_recon"].makedirs_p()
+        print(env["video_frame_list_thorough"])
         colmap.extract_features(image_list=env["video_frame_list_thorough"], more=args.more_sift_features)
         colmap.index_images(vocab_tree_output=env["indexed_vocab_tree"], vocab_tree_input=args.vocab_tree)
         if env["match_method"] == "vocab_tree":
